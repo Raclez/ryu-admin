@@ -1,0 +1,64 @@
+{
+  "name": "@vben/web-ele",
+  "version": "5.5.3",
+  "homepage": "https://vben.pro",
+  "bugs": "https://github.com/vbenjs/vue-vben-admin/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vbenjs/vue-vben-admin.git",
+    "directory": "apps/web-ele"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "vben",
+    "email": "ann.vben@gmail.com",
+    "url": "https://github.com/anncwb"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm vite build --mode production",
+    "build:analyze": "pnpm vite build --mode analyze",
+    "dev": "pnpm vite --mode development ",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit --skipLibCheck"
+  },
+  "imports": {
+    "#/*": "./src/*"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "@vben/access": "workspace:*",
+    "@vben/common-ui": "workspace:*",
+    "@vben/constants": "workspace:*",
+    "@vben/hooks": "workspace:*",
+    "@vben/icons": "workspace:*",
+    "@vben/layouts": "workspace:*",
+    "@vben/locales": "workspace:*",
+    "@vben/plugins": "workspace:*",
+    "@vben/preferences": "workspace:*",
+    "@vben/request": "workspace:*",
+    "@vben/stores": "workspace:*",
+    "@vben/styles": "workspace:*",
+    "@vben/types": "workspace:*",
+    "@vben/utils": "workspace:*",
+    "@vueuse/core": "catalog:",
+    "date-fns": "^4.1.0",
+    "dayjs": "catalog:",
+    "diff": "^7.0.0",
+    "element-plus": "catalog:",
+    "highlight.js": "^11.11.1",
+    "html2pdf.js": "^0.10.3",
+    "md-editor-v3": "4.17.0",
+    "monaco-editor": "^0.52.2",
+    "pinia": "catalog:",
+    "vite-plugin-monaco-editor": "^1.1.0",
+    "vue": "catalog:",
+    "vue-router": "catalog:"
+  },
+  "devDependencies": {
+    "unplugin-auto-import": "^19.1.0",
+    "unplugin-element-plus": "catalog:",
+    "unplugin-vue-components": "^28.4.0",
+    "vite-plugin-vue-setup-extend": "^0.4.0"
+  }
+}
