@@ -48,14 +48,18 @@
     "element-plus": "catalog:",
     "highlight.js": "^11.11.1",
     "html2pdf.js": "^0.10.3",
+    "marked": "^15.0.7",
     "md-editor-v3": "4.17.0",
     "monaco-editor": "^0.52.2",
     "pinia": "catalog:",
+    "puppeteer": "^24.4.0",
     "vite-plugin-monaco-editor": "^1.1.0",
     "vue": "catalog:",
     "vue-router": "catalog:"
   },
   "devDependencies": {
+    "@types/lodash-es": "^4.17.12",
+    "lodash-es": "^4.17.21",
     "unplugin-auto-import": "^19.1.0",
     "unplugin-element-plus": "catalog:",
     "unplugin-vue-components": "^28.4.0",

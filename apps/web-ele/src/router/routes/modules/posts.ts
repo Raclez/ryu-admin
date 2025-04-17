@@ -37,7 +37,7 @@ const routes: RouteRecordRaw[] = [
           hideInMenu: true,
         },
         name: 'PostVersion',
-        path: '/posts/postVersion',
+        path: '/posts/historyVersion/:id?',
         component: () => import('#/views/demos/posts/historyVersion.vue'),
       },
       {

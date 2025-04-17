@@ -1,266 +1,42 @@
-<template>
-  <div class="version-history-container">
-    <el-card class="version-history-card">
-      <template #header>
-        <div class="card-header">
-          <h2>{{ article.title }} - 版本历史</h2>
-          <el-button type="primary" size="small" @click="backToArticle">
-            返回文章
-          </el-button>
-        </div>
-      </template>
-
-      <div v-if="loading" class="loading-container">
-        <el-skeleton :rows="6" animated />
-      </div>
-
-      <div v-else-if="versionHistory.length === 0" class="empty-state">
-        <el-empty description="暂无版本历史记录" />
-      </div>
-
-      <div v-else class="version-history-content">
-        <el-timeline>
-          <el-timeline-item
-            v-for="(version, index) in versionHistory"
-            :key="version.id"
-            :timestamp="formatDate(version.createdAt)"
-            :type="getTimelineItemType(index)"
-            :color="getTimelineItemColor(index)"
-          >
-            <el-card class="version-card">
-              <div class="version-header">
-                <div class="version-info">
-                  <h3>版本 {{ version.versionNumber }}</h3>
-                  <div class="version-meta">
-                    <span class="author">
-                      <el-avatar :size="24" :src="version.author.avatar"></el-avatar>
-                      {{ version.author.name }}
-                    </span>
-                    <el-tag size="small" :type="version.isPublished ? 'success' : 'info'">
-                      {{ version.isPublished ? '已发布' : '草稿' }}
-                    </el-tag>
-                  </div>
-                </div>
-                <div class="version-actions">
-                  <el-tooltip content="预览此版本" placement="top">
-                    <el-button type="primary" plain size="small" circle @click="previewVersion(version)">
-                      <el-icon><View /></el-icon>
-                    </el-button>
-                  </el-tooltip>
-                  <el-tooltip content="恢复此版本" placement="top">
-                    <el-button
-                      type="success"
-                      plain
-                      size="small"
-                      circle
-                      @click="restoreVersion(version)"
-                      :disabled="index === 0"
-                    >
-                      <el-icon><RefreshRight /></el-icon>
-                    </el-button>
-                  </el-tooltip>
-                  <el-tooltip content="比较版本差异" placement="top">
-                    <el-button
-                      type="info"
-                      plain
-                      size="small"
-                      circle
-                      @click="openCompareDialog(version, index)"
-                      :disabled="index === versionHistory.length - 1"
-                    >
-                      <el-icon><Document /></el-icon>
-                    </el-button>
-                  </el-tooltip>
-                </div>
-              </div>
-
-              <div class="version-description">
-                <p>{{ version.description || '无版本说明' }}</p>
-              </div>
-
-              <div class="version-stats">
-                <div class="stat-item">
-                  <el-icon><Edit /></el-icon>
-                  <span>{{ version.wordCount }} 字</span>
-                </div>
-                <div class="stat-item">
-                  <el-icon><Clock /></el-icon>
-                  <span>{{ formatDuration(version.editDuration) }}</span>
-                </div>
-                <div class="stat-item">
-                  <el-icon><Reading /></el-icon>
-                  <span>预计阅读时间 {{ Math.ceil(version.wordCount / 300) }} 分钟</span>
-                </div>
-              </div>
-
-              <div v-if="version.tags && version.tags.length > 0" class="version-tags">
-                <el-tag
-                  v-for="tag in version.tags"
-                  :key="tag"
-                  size="small"
-                  effect="plain"
-                  class="tag-item"
-                >
-                  {{ tag }}
-                </el-tag>
-              </div>
-            </el-card>
-          </el-timeline-item>
-        </el-timeline>
-      </div>
-    </el-card>
-
-    <!-- 重新设计的版本预览对话框 -->
-    <el-dialog
-      v-model="previewDialogVisible"
-      title="版本预览"
-      width="70%"
-      :before-close="closePreviewDialog"
-      top="5vh"
-      fullscreen
-      destroy-on-close
-    >
-      <div v-if="selectedVersion" class="preview-content">
-        <div class="preview-header">
-          <div class="preview-title">
-            <h2>{{ article.title }}</h2>
-            <div class="preview-subtitle">
-              版本 {{ selectedVersion.versionNumber }} · {{ formatDate(selectedVersion.createdAt) }}
-            </div>
-          </div>
-          <div class="preview-info">
-            <div class="preview-author">
-              <el-avatar :size="32" :src="selectedVersion.author.avatar"></el-avatar>
-              <div class="author-details">
-                <div class="author-name">{{ selectedVersion.author.name }}</div>
-                <el-tag size="small" :type="selectedVersion.isPublished ? 'success' : 'info'">
-                  {{ selectedVersion.isPublished ? '已发布' : '草稿' }}
-                </el-tag>
-              </div>
-            </div>
-            <div class="preview-stats">
-              <div class="stat-badge">
-                <el-icon><Edit /></el-icon>
-                {{ selectedVersion.wordCount }} 字
-              </div>
-              <div class="stat-badge">
-                <el-icon><Clock /></el-icon>
-                {{ formatDuration(selectedVersion.editDuration) }}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <el-divider />
-
-        <div class="preview-body markdown-body" v-html="selectedVersion.content"></div>
-      </div>
-    </el-dialog>
-
-    <!-- 重新设计的版本比较对话框，类似IDEA历史记录对比 -->
-    <el-dialog
-      v-model="compareDialogVisible"
-      title="版本对比"
-      width="90%"
-      :before-close="closeCompareDialog"
-      top="5vh"
-      fullscreen
-      destroy-on-close
-    >
-      <div v-if="currentVersion && previousVersion" class="compare-content">
-<!--        <div class="compare-header">-->
-<!--          <div class="compare-controls">-->
-<!--            <div class="diff-settings">-->
-<!--              <el-checkbox v-model="showLineNumbers" @change="renderDiff">显示行号</el-checkbox>-->
-<!--              <el-checkbox v-model="highlightChanges" @change="renderDiff">高亮显示变化</el-checkbox>-->
-<!--            </div>-->
-<!--          </div>-->
-<!--        </div>-->
-        <DiffViewer
-          :original="leftVersion?.content || ''"
-          :modified="rightVersion?.content || ''"
-        />
-
-<!--        <div class="ide-diff-container">-->
-<!--          <div class="diff-panels">-->
-<!--            <div class="diff-panel left-panel">-->
-<!--              <div class="panel-header">-->
-<!--                <div class="panel-version">-->
-<!--                  版本 {{ leftVersion?.versionNumber }}-->
-<!--                </div>-->
-<!--                <div class="panel-date">-->
-<!--                  {{ formatDate(leftVersion?.createdAt) }}-->
-<!--                </div>-->
-<!--              </div>-->
-<!--              <div class="panel-content" ref="leftPanel"></div>-->
-<!--            </div>-->
-<!--            <div class="diff-panel right-panel">-->
-<!--              <div class="panel-header">-->
-<!--                <div class="panel-version">-->
-<!--                  版本 {{ rightVersion?.versionNumber }}-->
-<!--                </div>-->
-<!--                <div class="panel-date">-->
-<!--                  {{ formatDate(rightVersion?.createdAt) }}-->
-<!--                </div>-->
-<!--              </div>-->
-<!--              <div class="panel-content" ref="rightPanel"></div>-->
-<!--            </div>-->
-<!--          </div>-->
-
-<!--          <div class="diff-summary">-->
-<!--            <div class="summary-item added">-->
-<!--              <div class="summary-icon"><el-icon><Plus /></el-icon></div>-->
-<!--              <div class="summary-text">新增: {{ diffStats.added }} 行</div>-->
-<!--            </div>-->
-<!--            <div class="summary-item modified">-->
-<!--              <div class="summary-icon"><el-icon><Edit /></el-icon></div>-->
-<!--              <div class="summary-text">修改: {{ diffStats.modified }} 行</div>-->
-<!--            </div>-->
-<!--            <div class="summary-item deleted">-->
-<!--              <div class="summary-icon"><el-icon><Delete /></el-icon></div>-->
-<!--              <div class="summary-text">删除: {{ diffStats.deleted }} 行</div>-->
-<!--            </div>-->
-<!--          </div>-->
-<!--        </div>-->
-      </div>
-    </el-dialog>
-
-    <!-- 恢复版本确认 -->
-    <el-dialog
-      v-model="restoreDialogVisible"
-      title="恢复版本确认"
-      width="30%"
-    >
-      <div class="restore-confirm-content">
-        <el-alert
-          title="确认恢复版本"
-          type="warning"
-          :closable="false"
-          show-icon
-        >
-          <p>您即将恢复到版本 {{ selectedVersion?.versionNumber }} ({{ formatDate(selectedVersion?.createdAt) }})。</p>
-          <p>此操作将创建一个新的版本，内容将恢复到所选版本。</p>
-        </el-alert>
-      </div>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="restoreDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="confirmRestoreVersion">
-            确认恢复
-          </el-button>
-        </span>
-      </template>
-    </el-dialog>
-  </div>
-</template>
-
 <script setup>
-import { ref, onMounted, computed, nextTick, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus';
-import { View, RefreshRight, Document, Edit, Clock, Reading, Plus, Delete } from '@element-plus/icons-vue';
-import DiffViewer from "#/components/DiffViewer.vue";
-// import MonacoEditor from "#/components/MonacoEditor.vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
+import {useRoute, useRouter} from 'vue-router';
+
+import {
+  ArrowDown,
+  ArrowUp,
+  Brush,
+  Close,
+  Collection,
+  Document,
+  DocumentCopy,
+  Edit,
+  InfoFilled,
+  Loading,
+  Menu,
+  Plus,
+  Refresh,
+  RefreshRight,
+  Timer,
+  User,
+  View,
+  ZoomIn,
+  ZoomOut,
+} from '@element-plus/icons-vue';
+import {ElMessage, ElMessageBox} from 'element-plus';
+import {MdEditor} from 'md-editor-v3';
+
+import {getVersion, getVersions} from '#/api/core/historyVersion.ts';
+import DiffViewer from '#/components/DiffViewer.vue';
+
+import 'md-editor-v3/lib/style.css';
 
 // 路由相关
 const route = useRoute();
@@ -268,211 +44,182 @@ const router = useRouter();
 const articleId = route.params.id;
 
 // 数据状态
-const loading = ref(true);
-const article = ref({ title: '加载中...' });
-const versionHistory = ref([]);
+const loading = ref(false);
+const isLoadingMore = ref(false);
+const article = ref({title: '加载中...'});
+const versions = ref([]);
+const finished = ref(false);
+const cursor = ref(null);
+const limit = 10;
 
 // 对话框状态
-const previewDialogVisible = ref(false);
+const previewVisible = ref(false);
 const compareDialogVisible = ref(false);
-const restoreDialogVisible = ref(false);
+const restoreConfirmVisible = ref(false);
+const previewLoading = ref(false);
 
 // 版本相关
-const selectedVersion = ref(null);
 const currentVersion = ref(null);
-const previousVersion = ref(null);
+const compareVersion = ref(null);
+const latestVersion = ref(null);
+const previewContent = ref('');
+const compareLoading = ref(false);
 
 // 比较相关
-const leftVersionId = ref(null);
-const rightVersionId = ref(null);
-const leftPanel = ref(null);
-const rightPanel = ref(null);
-const showLineNumbers = ref(true);
-const highlightChanges = ref(true);
-const diffStats = ref({
-  added: 0,
-  modified: 0,
-  deleted: 0
+const isSideBySide = ref(true);
+const showWhitespace = ref(false);
+const currentDiffIndex = ref(0);
+const diffCount = ref(0);
+const currentLine = ref(1);
+const currentColumn = ref(1);
+const totalLines = ref(0);
+const diffViewerRef = ref(null);
+
+// 标签相关
+const tagDialogVisible = ref(false);
+const tagForm = ref({
+  tag: '',
+  type: 'info',
+});
+const selectedVersionForTag = ref(null);
+
+// 可用的标签列表
+const availableTags = computed(() => {
+  const tags = new Set();
+  versions.value.forEach((version) => {
+    version.tags?.forEach((tag) => tags.add(tag));
+  });
+  return [...tags];
 });
 
-// 计算属性 - 根据ID获取左右版本
-const leftVersion = computed(() => {
-  return versionHistory.value.find(v => v.id === leftVersionId.value) || null;
-});
+// 将文件扩展名转换为Monaco编辑器支持的语言
+const fileExtToLanguage = (ext) => {
+  const mapping = {
+    js: 'javascript',
+    jsx: 'javascript',
+    ts: 'typescript',
+    tsx: 'typescript',
+    html: 'html',
+    css: 'css',
+    scss: 'scss',
+    less: 'less',
+    json: 'json',
+    md: 'markdown',
+    vue: 'html',
+    xml: 'xml',
+    yaml: 'yaml',
+    yml: 'yaml',
+    py: 'python',
+    java: 'java',
+    c: 'c',
+    cpp: 'cpp',
+    cs: 'csharp',
+    go: 'go',
+    php: 'php',
+    rb: 'ruby',
+    rs: 'rust',
+    sh: 'shell',
+    sql: 'sql',
+    swift: 'swift',
+    dart: 'dart',
+    kt: 'kotlin',
+  };
 
-const rightVersion = computed(() => {
-  return versionHistory.value.find(v => v.id === rightVersionId.value) || null;
-});
+  return mapping[ext] || 'plaintext';
+};
 
-// 模拟获取文章信息和版本历史数据
-const fetchArticleData = async () => {
-  loading.value = true;
+// 从文件名中提取扩展名
+const extractFileExtension = (filename) => {
+  if (!filename) return 'md';
+  const parts = filename.split('.');
+  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : 'md';
+};
+
+// 检查获取的内容是否为纯文本或JSON
+const parseVersionContent = (content) => {
   try {
-    // 这里应该是实际的API调用
-    // const response = await api.getArticle(articleId);
-    // article.value = response.data;
+    // 尝试解析为JSON
+    const parsed = JSON.parse(content);
+    return parsed.content || parsed || content;
+  } catch {
+    // 如果不是JSON，直接返回原始内容
+    return content;
+  }
+};
 
-    // 模拟数据
-    setTimeout(() => {
-      article.value = {
-        id: articleId,
-        title: '如何使用Vue3和Element Plus构建现代化Web应用',
-        author: {
-          id: 1,
-          name: '张三',
-          avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
-        }
-      };
+// 获取版本历史
+const fetchVersions = async (isLoadMore = false) => {
+  if (loading.value || (isLoadMore && finished.value)) return;
 
-      versionHistory.value = [
-        {
-          id: 1,
-          versionNumber: 3.0,
-          articleId: articleId,
-          createdAt: new Date(2024, 2, 1, 14, 30),
-          author: {
-            id: 1,
-            name: '张三',
-            avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
-          },
-          isPublished: true,
-          description: '增加了更多示例和修复了格式问题',
-          content: `## 脚手架文件结构
+  try {
+    loading.value = true;
+    isLoadingMore.value = isLoadMore;
 
-\`\`\`lua
-├─ node_modules
-├─ public
-│  ├─ favicon.ico: 页签图标
-│  └─ index.html: 主页面
-├─ src
-│  ├─ assets: 存放静态资源
-│  │  └─ logo.png
-│  ├─ component: 存放组件
-│  │  └─ HelloWorld.vue
-│  ├─ App.vue: 汇总所有组件
-│  └─ main.js: 入口文件
-├─ .gitignore: git版本管制忽略的配置
-├─ babel.config.js: babel的配置文件
-├─ package.json: 应用包配置文件
-├─ README.md: 应用描述文件
-└─ package-lock.json: 包版本控制文件
-\`\`\`
-`,
-          wordCount: 1500,
-          editDuration: 7800, // 秒
-          tags: ['最终版', '已发布']
-        },
-        {
-          id: 2,
-          versionNumber: 2.0,
-          articleId: articleId,
-          createdAt: new Date(2024, 1, 28, 10, 15),
-          author: {
-            id: 1,
-            name: '张三',
-            avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
-          },
-          isPublished: false,
-          description: '完成主要内容编写，添加了代码示例',
-          content: `## ccc脚手架文件结构
-          #### 你在干嘛
+    const params = {limit};
+    if (isLoadMore && cursor.value) {
+      params.cursor = cursor.value;
+    }
 
-\`\`\`lua
-├─ node_modules
-├─ public
-│  ├─ favicon.ico: 页签图标
-│  └─ index.html: 主页面
-├─ src
-│  ├─ assets: 存静态资源
-│  │  └─ logo.png
-│  ├─ component: 存放组件
-│  │  └─ HelloWorld.vue
-│  ├─ App.vue: 汇总所有组件
-│  └─ main.js: 入口文件
-├─ .gitignore: git版本管制忽略的配置
-├─ babel.config.js: babel的配置文件
-├─ package.json: 应用包配置文件
-├─ README.md: 应用描述文件
-└─ package-lock.json: 包版本控制文件
-\`\`\`
-`,
-          wordCount: 1350,
-          editDuration: 5400,
-          tags: ['草稿', '审阅中']
-        },
-        {
-          id: 3,
-          versionNumber: 1.0,
-          articleId: articleId,
-          createdAt: new Date(2024, 1, 25, 16, 45),
-          author: {
-            id: 1,
-            name: '张三',
-            avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
-          },
-          isPublished: false,
-          description: '初始草稿，文章结构和大纲',
-          content:  `## 脚手架文件结构
-\`\`\`lua
-├─ node_modules
-├─ public
-│  ├─ favicon.ico: 页签图标
-│  └─ index.html: 主页面
-├─ src
-│  ├─ assets: 存放静态资源
-│  │  └─ logo.png
-│  ├─ component: 存放组件
-│  │  └─ HelloWorld.vue
-│  ├─ App.vue: 汇总所有组件
-│  └─ main.js: 入口文件
-├─ .gitignore: git版本管制忽略的配置
-├─ babel.config.js: babel的配置文件
-├─ package.json: 应用包配置文件
-├─ README.md: 应用描述文件
-└─ package-lock.json: 包版本控制文件
-\`\`\`
-`,
-          wordCount: 500,
-          editDuration: 3600,
-          tags: ['草稿', '初稿']
-        }
-      ];
+    const response = await getVersions(route.params.id, params);
+    const newVersions = response.data || response;
 
-      loading.value = false;
-    }, 800);
+    if (newVersions.length < limit) {
+      finished.value = true;
+    }
+
+    if (isLoadMore) {
+      versions.value = [...versions.value, ...newVersions];
+    } else {
+      versions.value = newVersions;
+      finished.value = false;
+    }
+
+    if (newVersions.length > 0) {
+      cursor.value = newVersions[newVersions.length - 1].id;
+    }
   } catch (error) {
-    console.error('获取文章数据失败:', error);
-    ElMessage.error('获取文章数据失败');
+    console.error('获取版本历史失败:', error);
+    ElMessage.error('获取版本历史失败');
+  } finally {
     loading.value = false;
+    isLoadingMore.value = false;
   }
 };
 
-// 格式化日期
+/**
+ * 格式化日期
+ */
 const formatDate = (date) => {
-  if (!date) return '';
-  const d = new Date(date);
-  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-};
+  if (!date) return '未知时间';
 
-// 格式化时长
-const formatDuration = (seconds) => {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
+  // 如果已经是格式化的字符串，直接返回
+  if (typeof date === 'string' && (date.includes('-') || date.includes('/'))) {
+    return date;
+  }
 
-  let result = '';
-  if (hours > 0) {
-    result += `${hours}小时`;
+  try {
+    const dateObj = new Date(date);
+    return dateObj
+      .toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      .replaceAll('/', '-');
+  } catch (error) {
+    console.error('日期格式化错误', error);
+    return String(date);
   }
-  if (minutes > 0 || hours === 0) {
-    result += `${minutes}分钟`;
-  }
-  return result;
 };
 
 // 获取时间线项目类型
-const getTimelineItemType = (index) => {
-  const types = ['success', 'warning', 'info'];
-  return index < types.length ? types[index] : 'info';
+const getTimelineItemType = (version) => {
+  if (version.isLatest) return 'success';
+  if (version.tags?.includes('重要更新')) return 'danger';
+  if (version.tags?.includes('问题修复')) return 'warning';
+  return 'primary';
 };
 
 // 获取时间线项目颜色
@@ -482,435 +229,825 @@ const getTimelineItemColor = (index) => {
   return '#909399'; // 其他版本灰色
 };
 
-// 预览版本
-const previewVersion = (version) => {
-  selectedVersion.value = version;
-  previewDialogVisible.value = true;
-};
-
-// 关闭预览对话框
-const closePreviewDialog = () => {
-  previewDialogVisible.value = false;
-  selectedVersion.value = null;
-};
-
-// 打开比较对话框
-const openCompareDialog = (currentVer, index) => {
-  if (index >= versionHistory.value.length - 1) {
-    ElMessage.warning('没有更早的版本可比较');
-    return;
+// 切换差异视图模式
+const toggleDiffViewMode = () => {
+  isSideBySide.value = !isSideBySide.value;
+  if (diffViewerRef.value) {
+    // 通过引用调用DiffViewer组件的方法来切换模式
+    nextTick(() => {
+      const editor = diffViewerRef.value.diffEditor;
+      if (editor) {
+        editor.updateOptions({renderSideBySide: isSideBySide.value});
+      }
+    });
   }
+};
 
-  currentVersion.value = currentVer;
-  previousVersion.value = versionHistory.value[index + 1];
+// 处理预览
+const handlePreview = async (version) => {
+  currentVersion.value = await getVersion(route.params.id, version.version);
+  previewVisible.value = true;
+  previewLoading.value = true;
 
-  // 设置初始版本ID用于选择器
-  rightVersionId.value = currentVer.id;
-  leftVersionId.value = previousVersion.value.id;
+  try {
+    previewContent.value = JSON.parse(currentVersion.value.content).content;
+  } catch {
+    ElMessage.error('预览内容加载失败');
+  } finally {
+    previewLoading.value = false;
+  }
+};
+
+const compareContent = ref('');
+const latestContent = ref('');
+// 处理版本比较
+const handleCompare = async (version) => {
+  compareVersion.value = await getVersion(route.params.id, version.version);
+
+  latestVersion.value = await getVersion(
+    route.params.id,
+    versions.value.find((v) => v.latest).version,
+  );
+
+  compareContent.value = JSON.parse(compareVersion.value.content);
+  latestContent.value = JSON.parse(latestVersion.value.content);
 
   compareDialogVisible.value = true;
-
-  // // 在对话框打开后渲染差异
-  // nextTick(() => {
-  //   console.log("Dialog opened, Monaco will be rendered properly.");
-  // });
 };
 
-// 更新比较的版本
-const updateCompare = () => {
-
-  currentVersion.value = versionHistory.value.find(v => v.id === rightVersionId.value);
-  previousVersion.value = versionHistory.value.find(v => v.id === leftVersionId.value);
-  // if (leftVersionId.value && rightVersionId.value) {
-  //   currentVersion.value = versionHistory.value.find(v => v.id === rightVersionId.value);
-  //   previousVersion.value = versionHistory.value.find(v => v.id === leftVersionId.value);
-  //
-
-  // nextTick(() => {
-  //   console.log("Dialog opened, Monaco will be rendered properly.");
-  // });
-  // }
-};
-
-// 从HTML内容中提取纯文本
-const extractTextContent = (html) => {
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = html;
-  return tempDiv.textContent || tempDiv.innerText || '';
-};
-
-// 计算差异统计
-const calculateDiffStats = (diff) => {
-  let added = 0;
-  let deleted = 0;
-  let modified = 0;
-
-  diff.forEach(part => {
-    if (part.added) {
-      added += part.value.split('\n').length - 1;
-    } else if (part.removed) {
-      deleted += part.value.split('\n').length - 1;
-    }
-  });
-
-  // 修改的行数比较复杂，这里简化处理
-  modified = Math.min(added, deleted);
-  added = added - modified;
-  deleted = deleted - modified;
-
-  return { added, modified, deleted };
-};
-
-// 渲染差异
-// const renderDiff = () => {
-//   if (!leftPanel.value || !rightPanel.value || !leftVersion.value || !rightVersion.value) return;
-//
-//   const oldText = extractTextContent(leftVersion.value.content);
-//   const newText = extractTextContent(rightVersion.value.content);
-//
-//   // 使用diff库计算差异
-//   const diff = Diff.diffLines(oldText, newText);
-//   diffStats.value = calculateDiffStats(diff);
-//
-//   // 生成左右面板的HTML
-//   let leftHtml = '';
-//   let rightHtml = '';
-//
-//   let lineNumberLeft = 1;
-//   let lineNumberRight = 1;
-//
-//   diff.forEach(part => {
-//     const lines = part.value.split('\n');
-//     // 忽略最后一个空行
-//     if (lines[lines.length - 1] === '') {
-//       lines.pop();
-//     }
-//
-//     lines.forEach(line => {
-//       const escapedLine = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-//
-//       if (!part.added) {
-//         // 在左侧显示
-//         const lineClass = part.removed && highlightChanges.value ? 'diff-line-removed' : '';
-//         const lineNum = showLineNumbers.value ? `<span class="line-number">${lineNumberLeft}</span>` : '';
-//         leftHtml += `<div class="diff-line ${lineClass}">${lineNum}<span class="line-content">${escapedLine || ' '}</span></div>`;
-//         lineNumberLeft++;
-//       }
-//
-//       if (!part.removed) {
-//         // 在右侧显示
-//         const lineClass = part.added && highlightChanges.value ? 'diff-line-added' : '';
-//         const lineNum = showLineNumbers.value ? `<span class="line-number">${lineNumberRight}</span>` : '';
-//         rightHtml += `<div class="diff-line ${lineClass}">${lineNum}<span class="line-content">${escapedLine || ' '}</span></div>`;
-//         lineNumberRight++;
-//       }
-//     });
-//   });
-//
-//   leftPanel.value.innerHTML = leftHtml || '<div class="empty-diff">无内容</div>';
-//   rightPanel.value.innerHTML = rightHtml || '<div class="empty-diff">无内容</div>';
-//
-//   // 应用代码高亮（如果需要）
-//   if (hljs) {
-//     document.querySelectorAll('.line-content pre code').forEach((block) => {
-//       hljs.highlightElement(block);
-//     });
-//   }
-//
-//   // 同步滚动处理
-//   syncPanelScroll();
-// };
-
-
-
-function renderDiff() {
-  // 获取两个版本的内容
-  const leftContent = leftVersion.content;
-  const rightContent = rightVersion.content;
-
-  // 使用 diff 库比较内容差异 (假设你使用了如 diff 或 jsdiff 之类的库)
-  const diffResult = computeDiff(leftContent, rightContent);
-
-  // 清空面板内容
-  leftPanelRef.value.innerHTML = '';
-  rightPanelRef.value.innerHTML = '';
-
-  let addedLines = 0;
-  let deletedLines = 0;
-  let modifiedLines = 0;
-
-  // 渲染差异内容
-  diffResult.forEach((part, index) => {
-    const leftLineNumber = part.leftLineNumber;
-    const rightLineNumber = part.rightLineNumber;
-
-    // 处理左侧面板
-    if (part.type !== 'add') {
-      const leftLineDiv = document.createElement('div');
-      leftLineDiv.className = 'diff-line';
-
-      // 根据变更类型添加样式
-      if (part.type === 'delete') {
-        leftLineDiv.classList.add('diff-deleted');
-        deletedLines++;
-      } else if (part.type === 'modify') {
-        leftLineDiv.classList.add('diff-modified');
-        modifiedLines++;
-      }
-
-      // 如果当前行是上下文中应该高亮的行，添加高亮背景
-      if (shouldHighlightLine(part, index, diffResult)) {
-        const highlightSpan = document.createElement('span');
-        highlightSpan.className = 'highlight-row';
-        leftLineDiv.appendChild(highlightSpan);
-      }
-
-      // 添加行号
-      if (showLineNumbers) {
-        const lineNumberSpan = document.createElement('span');
-        lineNumberSpan.className = 'line-number';
-        lineNumberSpan.textContent = leftLineNumber;
-        leftLineDiv.appendChild(lineNumberSpan);
-      }
-
-      // 添加行内容，并处理词级别的差异高亮
-      const lineContentDiv = document.createElement('div');
-      lineContentDiv.className = 'line-content';
-
-      if (part.type === 'modify' && highlightChanges) {
-        lineContentDiv.innerHTML = highlightWordDifferences(part.leftContent, 'deleted');
-      } else {
-        lineContentDiv.textContent = part.leftContent;
-      }
-
-      leftLineDiv.appendChild(lineContentDiv);
-      leftPanelRef.value.appendChild(leftLineDiv);
-    }
-
-    // 处理右侧面板
-    if (part.type !== 'delete') {
-      const rightLineDiv = document.createElement('div');
-      rightLineDiv.className = 'diff-line';
-
-      // 根据变更类型添加样式
-      if (part.type === 'add') {
-        rightLineDiv.classList.add('diff-added');
-        addedLines++;
-      } else if (part.type === 'modify') {
-        rightLineDiv.classList.add('diff-modified');
-      }
-
-      // 如果当前行是上下文中应该高亮的行，添加高亮背景
-      if (shouldHighlightLine(part, index, diffResult)) {
-        const highlightSpan = document.createElement('span');
-        highlightSpan.className = 'highlight-row';
-        rightLineDiv.appendChild(highlightSpan);
-      }
-
-      // 添加行号
-      if (showLineNumbers) {
-        const lineNumberSpan = document.createElement('span');
-        lineNumberSpan.className = 'line-number';
-        lineNumberSpan.textContent = rightLineNumber;
-        rightLineDiv.appendChild(lineNumberSpan);
-      }
-
-      // 添加行内容，并处理词级别的差异高亮
-      const lineContentDiv = document.createElement('div');
-      lineContentDiv.className = 'line-content';
-
-      if (part.type === 'modify' && highlightChanges) {
-        lineContentDiv.innerHTML = highlightWordDifferences(part.rightContent, 'added');
-      } else {
-        lineContentDiv.textContent = part.rightContent;
-      }
-
-      rightLineDiv.appendChild(lineContentDiv);
-      rightPanelRef.value.appendChild(rightLineDiv);
-    }
-  });
-
-  // 更新差异统计
-  diffStats.added = addedLines;
-  diffStats.deleted = deletedLines;
-  diffStats.modified = modifiedLines;
-}
-
-
-// 辅助函数：判断是否应当高亮显示该行（用于突出显示当前关注的变更部分）
-function shouldHighlightLine(part, index, diffResult) {
-  // 如果当前行是变更行，或者在变更行的上下文中，则高亮显示
-  if (part.type === 'modify' || part.type === 'add' || part.type === 'delete') {
-    return true;
-  }
-
-  // 检查是否在变更行的上下文（前后 3 行）内
-  for (let i = Math.max(0, index - 3); i < Math.min(diffResult.length, index + 4); i++) {
-    if (i === index) continue;
-
-    const nearby = diffResult[i];
-    if (nearby.type === 'modify' || nearby.type === 'add' || nearby.type === 'delete') {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-// 辅助函数：高亮显示单词级别的差异
-function highlightWordDifferences(content, diffType) {
-  // 这里应该使用差异比较算法来识别具体哪些词发生了变化
-  // 这个例子中，我们假设已经知道哪些词需要高亮显示
-
-  // 在实际实现中，你可能需要使用词级别的差异比较算法
-  // 以下是简化的示例实现
-
-  // 假设你已经有了一个函数来标记需要高亮的单词
-  const markedContent = content.replace(/\b(changed|word|here)\b/g, match => {
-    return `<span class="diff-text-${diffType}">${match}</span>`;
-  });
-
-  return markedContent;
-}
-
-
-// 辅助函数：计算两段文本的差异
-function computeDiff(oldText, newText) {
-  // 这里需要实际实现差异比较算法
-  // 你可以使用 diff 库，如 jsdiff, google-diff-match-patch 等
-
-  // 以下是一个返回模拟数据的示例
-  const lines1 = oldText.split('\n');
-  const lines2 = newText.split('\n');
-
-  const result = [];
-  let leftLineNumber = 1;
-  let rightLineNumber = 1;
-
-  // 这里只是一个简单的模拟实现
-  // 实际应用中应使用真正的差异比较算法
-  for (let i = 0; i < Math.max(lines1.length, lines2.length); i++) {
-    if (i < lines1.length && i < lines2.length) {
-      if (lines1[i] === lines2[i]) {
-        result.push({
-          type: 'same',
-          leftContent: lines1[i],
-          rightContent: lines2[i],
-          leftLineNumber: leftLineNumber++,
-          rightLineNumber: rightLineNumber++
-        });
-      } else {
-        result.push({
-          type: 'modify',
-          leftContent: lines1[i],
-          rightContent: lines2[i],
-          leftLineNumber: leftLineNumber++,
-          rightLineNumber: rightLineNumber++
-        });
-      }
-    } else if (i < lines1.length) {
-      result.push({
-        type: 'delete',
-        leftContent: lines1[i],
-        leftLineNumber: leftLineNumber++
-      });
-    } else {
-      result.push({
-        type: 'add',
-        rightContent: lines2[i],
-        rightLineNumber: rightLineNumber++
-      });
-    }
-  }
-
-  return result;
-}
-
-
-
-// 同步左右面板的滚动
-const syncPanelScroll = () => {
-  if (!leftPanel.value || !rightPanel.value) return;
-
-  const handleLeftScroll = () => {
-    rightPanel.value.scrollTop = leftPanel.value.scrollTop;
-  };
-
-  const handleRightScroll = () => {
-    leftPanel.value.scrollTop = rightPanel.value.scrollTop;
-  };
-
-  leftPanel.value.addEventListener('scroll', handleLeftScroll);
-  rightPanel.value.addEventListener('scroll', handleRightScroll);
-
-  // 在组件销毁时移除事件监听
-  watch(compareDialogVisible, (newVal) => {
-    if (!newVal) {
-      leftPanel.value?.removeEventListener('scroll', handleLeftScroll);
-      rightPanel.value?.removeEventListener('scroll', handleRightScroll);
-    }
-  });
-};
-
-// 关闭比较对话框
-const closeCompareDialog = () => {
-  compareDialogVisible.value = false;
-  currentVersion.value = null;
-  previousVersion.value = null;
-  leftVersionId.value = null;
-  rightVersionId.value = null;
-};
-
-// 恢复版本
-const restoreVersion = (version) => {
-  selectedVersion.value = version;
-  restoreDialogVisible.value = true;
+// 处理恢复版本
+const handleRestore = (version) => {
+  currentVersion.value = version;
+  restoreConfirmVisible.value = true;
 };
 
 // 确认恢复版本
-const confirmRestoreVersion = async () => {
+const confirmRestore = async () => {
+  if (!currentVersion.value) return;
+
+  restoring.value = true;
   try {
-    // 这里应该是实际的API调用
-    // await api.restoreVersion(articleId, selectedVersion.value.id);
-
-    // 模拟恢复成功
-    ElMessage.success(`已成功恢复到版本 ${selectedVersion.value.versionNumber}`);
-    restoreDialogVisible.value = false;
-
-    // 重新加载版本历史
-    fetchArticleData();
-  } catch (error) {
-    console.error('恢复版本失败:', error);
-    ElMessage.error('恢复版本失败');
+    await restoreVersion(currentVersion.value.id);
+    ElMessage.success('版本恢复成功');
+    restoreConfirmVisible.value = false;
+    await fetchVersions();
+  } catch {
+    ElMessage.error('版本恢复失败');
+  } finally {
+    restoring.value = false;
   }
 };
 
-// 返回文章页面
-const backToArticle = () => {
-  router.push(`/article/${articleId}`);
+// 处理添加标签
+const handleAddTag = (version) => {
+  selectedVersionForTag.value = version;
+  tagForm.value = {
+    tag: '',
+    type: 'info',
+  };
+  tagDialogVisible.value = true;
 };
 
-// 初始化
-onMounted(() => {
-  fetchArticleData();
+// 确认添加标签
+const confirmAddTag = async () => {
+  if (!selectedVersionForTag.value || !tagForm.value.tag) return;
+
+  try {
+    await addTag(selectedVersionForTag.value.id, tagForm.value.tag);
+    ElMessage.success('标签添加成功');
+    tagDialogVisible.value = false;
+    await fetchVersions();
+  } catch {
+    ElMessage.error('标签添加失败');
+  }
+};
+
+// 处理删除标签
+const handleRemoveTag = async (version, tag) => {
+  try {
+    await ElMessageBox.confirm(`确定要删除标签 "${tag}" 吗？`, '删除标签', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
+    await removeTag(version.id, tag);
+    ElMessage.success('标签删除成功');
+    await fetchVersions();
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('标签删除失败');
+    }
+  }
+};
+
+// 获取标签类型
+const getTagType = (tag) => {
+  const types = {
+    重要更新: 'danger',
+    功能优化: 'success',
+    问题修复: 'warning',
+    内容更新: 'info',
+  };
+  return types[tag] || 'info';
+};
+
+// 创建新版本
+const handleCreateVersion = () => {
+  // TODO: 实现创建新版本的功能
+  ElMessage.info('创建新版本功能开发中...');
+};
+
+// 刷新版本列表
+const refreshVersions = () => {
+  cursor.value = null;
+  finished.value = false;
+  fetchVersions(false);
+};
+
+// 监听滚动事件
+const handleScroll = () => {
+  if (loading.value || finished.value) return;
+
+  const scrollHeight = document.documentElement.scrollHeight;
+  const scrollTop = document.documentElement.scrollTop;
+  const clientHeight = document.documentElement.clientHeight;
+
+  // 提前200px触发加载更多，提升用户体验
+  if (scrollHeight - scrollTop - clientHeight < 200) {
+    fetchVersions(true);
+  }
+};
+
+// 比较功能按钮事件
+const toggleSideBySide = () => {
+  isSideBySide.value = !isSideBySide.value;
+  if (diffViewerRef.value) {
+    nextTick(() => {
+      const editor = diffViewerRef.value.diffEditor;
+      if (editor) {
+        editor.updateOptions({renderSideBySide: isSideBySide.value});
+      }
+    });
+  }
+};
+
+const toggleWhitespace = () => {
+  showWhitespace.value = !showWhitespace.value;
+  if (diffViewerRef.value) {
+    nextTick(() => {
+      const editor = diffViewerRef.value.diffEditor;
+      if (editor) {
+        editor.updateOptions({ignoreTrimWhitespace: !showWhitespace.value});
+      }
+    });
+  }
+};
+
+// 字体大小调整功能
+const editorFontSize = ref(14); // 默认字体大小
+
+// 字体增大
+const increaseFontSize = () => {
+  editorFontSize.value += 2;
+  updateEditorFontSize();
+};
+
+// 字体减小
+const decreaseFontSize = () => {
+  if (editorFontSize.value > 10) {
+    editorFontSize.value -= 2;
+    updateEditorFontSize();
+  }
+};
+
+// 更新编辑器字体大小
+const updateEditorFontSize = () => {
+  if (diffViewerRef.value?.diffEditor) {
+    const editor = diffViewerRef.value.diffEditor;
+    const origEditor = editor.getOriginalEditor();
+    const modEditor = editor.getModifiedEditor();
+
+    origEditor.updateOptions({fontSize: editorFontSize.value});
+    modEditor.updateOptions({fontSize: editorFontSize.value});
+  }
+};
+
+// 使用监听器在对话框可见时初始化字体大小
+watch(compareDialogVisible, (newVal) => {
+  if (newVal) {
+    // 设置初始焦点到编辑器，以便键盘事件能工作
+    nextTick(() => {
+      if (diffViewerRef.value?.diffEditor) {
+        diffViewerRef.value.diffEditor.focus();
+
+        // 初始化字体大小
+        updateEditorFontSize();
+      }
+    });
+  }
 });
+
+// 导航到下一个差异
+const goToNextDiff = () => {
+  if (diffCount.value === 0) return;
+
+  if (diffViewerRef.value) {
+    diffViewerRef.value.goToNextDiff();
+  }
+};
+
+// 导航到上一个差异
+const goToPrevDiff = () => {
+  if (diffCount.value === 0) return;
+
+  if (diffViewerRef.value) {
+    diffViewerRef.value.goToPreviousDiff();
+  }
+};
+
+// 支持键盘导航
+const handleKeyDown = (e) => {
+  if (compareDialogVisible.value) {
+    switch (e.key) {
+      case '+':
+      case '=': {
+        // 字体放大快捷键
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          increaseFontSize();
+        }
+
+        break;
+      }
+      case '-':
+      case '_': {
+        // 字体缩小快捷键
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          decreaseFontSize();
+        }
+
+        break;
+      }
+      case 'ArrowDown':
+      case 'j': {
+        e.preventDefault();
+        goToNextDiff();
+
+        break;
+      }
+      case 'ArrowUp':
+      case 'k': {
+        e.preventDefault();
+        goToPrevDiff();
+
+        break;
+      }
+      case 'Escape': {
+        e.preventDefault();
+        compareDialogVisible.value = false;
+
+        break;
+      }
+      // No default
+    }
+  }
+};
+
+// 组件挂载时添加滚动监听
+onMounted(() => {
+  fetchVersions();
+  window.addEventListener('scroll', handleScroll);
+  window.addEventListener('keydown', handleKeyDown);
+
+  // 添加自定义事件监听
+  window.addEventListener('close-diff-dialog', () => {
+    compareDialogVisible.value = false;
+  });
+});
+
+// 组件卸载时移除滚动监听
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', handleScroll);
+  window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('close-diff-dialog', () => {
+    compareDialogVisible.value = false;
+  });
+});
+
+// 监听对话框可见状态变化，在显示时设置键盘事件
+watch(compareDialogVisible, (newVal) => {
+  if (newVal) {
+    // 设置初始焦点到编辑器，以便键盘事件能工作
+    nextTick(() => {
+      if (diffViewerRef.value?.diffEditor) {
+        diffViewerRef.value.diffEditor.focus();
+
+        // 初始化字体大小
+        updateEditorFontSize();
+      }
+    });
+  }
+});
+
+const onDiffLoaded = (data) => {
+  console.log('差异加载完成:', data);
+  diffCount.value = data.diffCount || 0;
+  totalLines.value = data.totalLines || 0;
+  currentDiffIndex.value = 0;
+};
+
+const onDiffNavigated = (data) => {
+  console.log('差异导航事件:', data);
+  currentDiffIndex.value = data.currentIndex || 0;
+  currentLine.value = data.currentLine || 1;
+  currentColumn.value = data.currentColumn || 1;
+};
 </script>
 
-<style scoped>
+<template>
+  <div class="version-history-container">
+    <el-card class="version-history-card">
+      <template #header>
+        <div class="card-header">
+          <h2>版本历史</h2>
+          <div class="header-actions">
+            <el-button
+              :icon="Refresh"
+              :loading="loading && !isLoadingMore"
+              type="primary"
+              @click="refreshVersions"
+            >
+              刷新
+            </el-button>
+            <el-button :icon="Plus" type="success" @click="handleCreateVersion">
+              创建新版本
+            </el-button>
+          </div>
+        </div>
+      </template>
+
+      <div
+        v-if="loading && !isLoadingMore && versions.length === 0"
+        class="loading-container"
+      >
+        <el-skeleton :rows="6" animated />
+      </div>
+
+      <div v-else-if="versions.length === 0" class="empty-state">
+        <el-empty description="暂无版本历史记录" />
+      </div>
+
+      <div v-else class="version-history-content">
+        <el-timeline>
+          <el-timeline-item
+            v-for="version in versions"
+            :key="version.id"
+            :timestamp="formatDate(version.createTime)"
+            :type="getTimelineItemType(version)"
+            placement="top"
+          >
+            <el-card class="version-card">
+              <div class="version-header">
+                <div class="version-info">
+                  <h3>版本 {{ version.version }}</h3>
+                  <div class="version-meta">
+                    <span>
+                      <el-icon><User/></el-icon>
+                      {{ version.createBy }}
+                    </span>
+                    <span>
+                      <el-icon><Timer/></el-icon>
+                      {{ formatDate(version.createTime) }}
+                    </span>
+                    <el-tag
+                      v-if="version.latest"
+                      effect="light"
+                      size="small"
+                      type="success"
+                    >
+                      最新版本
+                    </el-tag>
+                  </div>
+                </div>
+                <div class="version-actions">
+                  <el-button
+                    :icon="View"
+                    :loading="previewLoading"
+                    type="primary"
+                    @click="handlePreview(version)"
+                  >
+                    预览
+                  </el-button>
+                  <el-button
+                    :icon="DocumentCopy"
+                    type="info"
+                    @click="handleCompare(version)"
+                  >
+                    比较
+                  </el-button>
+                  <el-button
+                    :icon="RefreshRight"
+                    type="success"
+                    @click="handleRestore(version)"
+                  >
+                    恢复
+                  </el-button>
+                </div>
+              </div>
+
+              <div class="version-stats">
+                <div class="stat-item">
+                  <el-icon>
+                    <Document/>
+                  </el-icon>
+                  <span>字数：{{ version.wordCount || 0 }}</span>
+                </div>
+                <div class="stat-item">
+                  <el-icon>
+                    <Timer/>
+                  </el-icon>
+                  <span>耗时：{{ version.duration || '0分钟' }}</span>
+                </div>
+                <div class="stat-item">
+                  <el-icon><Edit /></el-icon>
+                  <span>修改次数：{{ version.modifyCount || 0 }}</span>
+                </div>
+                <div class="stat-item">
+                  <el-icon>
+                    <Collection/>
+                  </el-icon>
+                  <span>标签数：{{ version.tags?.length || 0 }}</span>
+                </div>
+              </div>
+
+              <div class="version-description">
+                <p>{{ version.description || '暂无描述' }}</p>
+              </div>
+
+              <div class="version-tags">
+                <el-tag
+                  v-for="tag in version.tags"
+                  :key="tag"
+                  class="tag-item"
+                  :type="getTagType(tag)"
+                  closable
+                  effect="light"
+                  @close="handleRemoveTag(version, tag)"
+                >
+                  {{ tag }}
+                </el-tag>
+                <el-button
+                  :icon="Plus"
+                  link
+                  type="primary"
+                  @click="handleAddTag(version)"
+                >
+                  添加标签
+                </el-button>
+              </div>
+            </el-card>
+          </el-timeline-item>
+        </el-timeline>
+      </div>
+
+      <!-- 懒加载状态 -->
+      <div v-if="loading && isLoadingMore" class="loading-more">
+        <el-icon class="is-loading">
+          <Loading/>
+        </el-icon>
+        <span>加载更多版本...</span>
+      </div>
+
+      <!-- 没有更多数据提示 -->
+      <div v-if="finished && versions.length > 0" class="load-finished">
+        <el-divider>没有更多版本了</el-divider>
+      </div>
+    </el-card>
+
+    <!-- 预览对话框 -->
+    <el-dialog
+      v-model="previewVisible"
+      title="版本预览"
+      fullscreen
+      :close-on-click-modal="false"
+      :show-close="true"
+      destroy-on-close
+      class="fullscreen-dialog preview-dialog"
+    >
+      <div class="preview-container">
+        <!-- 版本信息头部 -->
+        <div class="preview-header">
+          <div class="version-info">
+            <div class="version-badge">版本 {{ currentVersion?.version }}</div>
+            <div class="version-meta">
+              <span class="meta-item">
+                <el-icon><User/></el-icon>
+                {{ currentVersion?.createBy || '未知' }}
+              </span>
+              <span class="meta-item">
+                <el-icon><Timer/></el-icon>
+                {{ formatDate(currentVersion?.createTime) }}
+              </span>
+              <span class="meta-item">
+                <el-icon><Document/></el-icon>
+                字数: {{ currentVersion?.wordCount || 0 }}
+              </span>
+              <span class="meta-item">
+                <el-icon><Edit/></el-icon>
+                修改: {{ currentVersion?.modifyCount || 0 }}次
+              </span>
+              <span v-if="currentVersion?.isLatest" class="meta-item">
+                <el-tag effect="dark" size="small" type="success"
+                >最新版本</el-tag
+                >
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 描述区域 -->
+        <div v-if="currentVersion?.description" class="version-description-bar">
+          <el-icon>
+            <InfoFilled/>
+          </el-icon>
+          <span>{{ currentVersion?.description }}</span>
+        </div>
+
+        <!-- 标签区域 -->
+        <div v-if="currentVersion?.tags?.length" class="version-tags-bar">
+          <div class="tag-list">
+            <el-tag
+              v-for="tag in currentVersion?.tags"
+              :key="tag"
+              :type="getTagType(tag)"
+              class="version-tag"
+              effect="light"
+              size="small"
+            >
+              {{ tag }}
+            </el-tag>
+          </div>
+        </div>
+
+        <!-- 内容预览区域 -->
+        <div class="content-preview-area">
+          <template v-if="previewLoading">
+            <div class="preview-loading">
+              <el-icon class="loading-icon">
+                <Loading/>
+              </el-icon>
+              <span>加载中...</span>
+            </div>
+          </template>
+          <template v-else>
+            <MdEditor
+              v-model="previewContent"
+              :preview-only="true"
+              :toolbars="[]"
+              class="preview-editor"
+              theme="dark"
+            />
+          </template>
+        </div>
+      </div>
+    </el-dialog>
+
+    <!-- 版本比较对话框 -->
+    <el-dialog
+      v-model="compareDialogVisible"
+      fullscreen
+      :close-on-click-modal="false"
+      :show-close="false"
+      destroy-on-close
+      class="fullscreen-dialog compare-dialog"
+    >
+      <div class="compare-container">
+        <!-- 顶部工具栏 -->
+        <div class="top-toolbar">
+          <div class="toolbar-left">
+            <div class="diff-counter">
+              <span>{{
+                  diffCount > 0
+                    ? `差异: ${currentDiffIndex + 1}/${diffCount}`
+                    : '无差异'
+                }}</span>
+            </div>
+            <div class="nav-buttons">
+              <el-button
+                :disabled="currentDiffIndex <= 0"
+                :icon="ArrowUp"
+                class="toolbar-btn"
+                @click="goToPrevDiff"
+              >
+                上一处
+              </el-button>
+              <el-button
+                :disabled="currentDiffIndex >= diffCount - 1"
+                :icon="ArrowDown"
+                class="toolbar-btn"
+                @click="goToNextDiff"
+              >
+                下一处
+              </el-button>
+            </div>
+          </div>
+          <div class="toolbar-right">
+            <el-button
+              :icon="Menu"
+              class="toolbar-btn"
+              title="切换视图模式"
+              @click="toggleSideBySide"
+            >
+              {{ isSideBySide ? '并排视图' : '内联视图' }}
+            </el-button>
+            <el-button
+              :icon="ZoomOut"
+              class="toolbar-btn"
+              title="减小字体"
+              @click="decreaseFontSize"
+            >
+              字体缩小
+            </el-button>
+            <el-button
+              :icon="ZoomIn"
+              class="toolbar-btn"
+              title="增大字体"
+              @click="increaseFontSize"
+            >
+              字体放大
+            </el-button>
+            <el-button
+              :icon="Brush"
+              class="toolbar-btn"
+              title="显示空白字符"
+              @click="toggleWhitespace"
+            >
+              {{ showWhitespace ? '隐藏空白' : '显示空白' }}
+            </el-button>
+            <el-button
+              :icon="Close"
+              class="toolbar-btn close-btn"
+              title="关闭"
+              @click="compareDialogVisible = false"
+            >
+              关闭
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 版本标题栏 -->
+        <div class="version-header-bar">
+          <div class="version-header old">
+            <div class="version-label">
+              历史版本 v{{ compareVersion?.version }}
+            </div>
+            <div class="version-date">
+              {{ formatDate(compareVersion?.createTime) }}
+            </div>
+          </div>
+          <div class="version-header current">
+            <div class="version-label">
+              最新版本 v{{ latestVersion?.version }}
+            </div>
+            <div class="version-date">
+              {{ formatDate(latestVersion?.createTime) }}
+            </div>
+          </div>
+        </div>
+
+        <!-- 比较内容区域 -->
+        <div class="diff-viewer-wrapper">
+          <DiffViewer
+            v-if="compareContent && latestContent"
+            ref="diffViewerRef"
+            :current-version="latestVersion"
+            :modified="latestContent.content"
+            :original="compareContent.content"
+            :previous-version="compareVersion"
+            :render-side-by-side="isSideBySide"
+            language="markdown"
+            @diff-loaded="onDiffLoaded"
+            @diff-navigated="onDiffNavigated"
+          />
+        </div>
+
+        <!-- 编辑器状态栏 -->
+        <div class="editor-statusbar">
+          <div class="status-left">
+            <span class="status-item status-position"
+            >Ln {{ currentLine }}, Col {{ currentColumn }}</span
+            >
+            <span class="status-item status-divider">|</span>
+            <span class="status-item status-lines">共 {{ totalLines }} 行</span>
+            <span class="status-item status-divider">|</span>
+            <span class="status-item status-words"
+            >{{ compareContent?.wordCount || 0 }} →
+              {{ latestContent?.wordCount || 0 }} 字</span
+            >
+          </div>
+          <div class="status-right">
+            <span class="status-item">Markdown</span>
+            <span class="status-item status-divider">|</span>
+            <span class="status-item">{{
+                isSideBySide ? '并排视图' : '内联视图'
+              }}</span>
+            <span class="status-item status-divider">|</span>
+            <span class="status-item">UTF-8</span>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
+
+    <!-- 恢复版本确认对话框 -->
+    <el-dialog
+      v-model="restoreConfirmVisible"
+      title="恢复版本确认"
+      :close-on-click-modal="false"
+      width="500px"
+    >
+      <div class="restore-confirm-content">
+        <el-alert :closable="false" show-icon title="警告" type="warning">
+          <template #default>
+            <p>确定要恢复到版本 {{ currentVersion?.version }} 吗？</p>
+            <p>此操作将覆盖当前内容，且无法撤销。</p>
+          </template>
+        </el-alert>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="restoreConfirmVisible = false">取消</el-button>
+          <el-button :loading="restoring" type="danger" @click="confirmRestore">
+            确认恢复
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 添加标签对话框 -->
+    <el-dialog
+      v-model="tagDialogVisible"
+      :close-on-click-modal="false"
+      title="添加标签"
+      width="400px"
+    >
+      <div class="tag-dialog-content">
+        <el-form :model="tagForm" label-width="80px">
+          <el-form-item label="标签名称">
+            <el-select
+              v-model="tagForm.tag"
+              allow-create
+              default-first-option
+              filterable
+              placeholder="请选择或输入标签"
+            >
+              <el-option
+                v-for="tag in availableTags"
+                :key="tag"
+                :label="tag"
+                :value="tag"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="标签类型">
+            <el-select v-model="tagForm.type" placeholder="请选择标签类型">
+              <el-option label="重要更新" value="danger"/>
+              <el-option label="功能优化" value="success"/>
+              <el-option label="问题修复" value="warning"/>
+              <el-option label="内容更新" value="info"/>
+            </el-select>
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="tagDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmAddTag">
+            确认添加
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<style lang="scss" scoped>
 /* 基础容器样式 */
 .version-history-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
-  font-family: var(--el-font-family);
-  background-color: transparent; /* 移除白色背景 */
+  font-family: var(--el-font-family), serif;
+  background-color: transparent;
 }
 
 .version-history-card {
   margin-bottom: 30px;
-  border-radius: 8px;
-  box-shadow: var(--el-box-shadow-light);
-  background-color: transparent; /* 移除白色背景 */
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  background-color: transparent;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* 卡片头部样式 */
@@ -918,41 +1055,37 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .card-header h2 {
   margin: 0;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 600;
   color: var(--el-text-color-primary);
-}
-
-/* 加载和空状态样式 */
-.loading-container {
-  padding: 30px 0;
-}
-
-.empty-state {
-  padding: 50px 0;
-  text-align: center;
+  background: linear-gradient(135deg, #2c3e50, #3498db);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 /* 时间线和版本卡片样式 */
 .version-history-content {
-  padding: 15px 0;
+  padding: 20px;
 }
 
 .version-card {
-  margin-bottom: 15px;
+  margin-bottom: 20px;
   transition: all 0.3s ease;
-  border-radius: 6px;
-  background-color: rgba(30, 30, 30, 0.7); /* 深色背景 */
+  border-radius: 10px;
+  background-color: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
 }
 
 .version-card:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 /* 版本卡片头部样式 */
@@ -960,41 +1093,59 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 16px;
+  padding: 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .version-info h3 {
-  margin: 0 0 8px 0;
-  font-size: 18px;
+  margin: 0 0 12px 0;
+  font-size: 20px;
   font-weight: 600;
   color: var(--el-text-color-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.version-info h3::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 20px;
+  background: linear-gradient(135deg, #3498db, #2ecc71);
+  border-radius: 2px;
 }
 
 .version-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   color: var(--el-text-color-regular);
   font-size: 14px;
 }
 
-.author {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .version-actions {
   display: flex;
-  gap: 10px;
+  gap: 12px;
+}
+
+.version-actions .el-button {
+  transition: all 0.3s ease;
+}
+
+.version-actions .el-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 /* 版本描述样式 */
 .version-description {
-  margin-bottom: 16px;
+  padding: 20px;
   color: var(--el-text-color-regular);
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.6;
+  background-color: rgba(0, 0, 0, 0.02);
+  border-radius: 0 0 10px 10px;
 }
 
 .version-description p {
@@ -1006,15 +1157,27 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 20px;
-  margin-bottom: 16px;
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
+  padding: 15px 20px;
+  background-color: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  margin: 0 20px 20px;
 }
 
 .stat-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+  padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.8);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.stat-item .el-icon {
+  font-size: 16px;
+  color: #3498db;
 }
 
 /* 版本标签样式 */
@@ -1022,409 +1185,660 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  padding: 0 20px 20px;
 }
 
 .tag-item {
   margin-right: 0;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  transition: all 0.3s ease;
 }
 
-/* 预览对话框样式 */
-.preview-content {
-  height: calc(100vh - 120px);
+.tag-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 时间线样式优化 */
+:deep(.el-timeline-item__node) {
+  background-color: #3498db;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #3498db;
+}
+
+:deep(.el-timeline-item__tail) {
+  border-left-color: rgba(52, 152, 219, 0.2);
+}
+
+:deep(.el-timeline-item__timestamp) {
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 加载和空状态样式 */
+.loading-container {
+  padding: 40px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.empty-state {
+  padding: 60px 0;
+  text-align: center;
+  background-color: rgba(0, 0, 0, 0.02);
+  border-radius: 12px;
+  margin: 20px;
+}
+
+/* 全屏对话框样式 */
+.fullscreen-dialog {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  background-color: #1e1e1e; /* 深色背景 */
-  color: #e0e0e0;
+
+  :deep(.el-dialog) {
+    display: flex;
+    flex-direction: column;
+    margin: 0 !important;
+    max-width: 100%;
+    height: 100%;
+    background: rgba(30, 32, 36, 0.98);
+  }
+
+  :deep(.el-dialog__header) {
+    padding: 0;
+    margin: 0;
+    height: 0;
+  }
+
+  :deep(.el-dialog__headerbtn) {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 10000;
+
+    .el-dialog__close {
+      font-size: 20px;
+      color: white;
+    }
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 0;
+    flex-grow: 1;
+    overflow: hidden;
+    height: 100%;
+  }
+}
+
+/* 预览页面样式 */
+.preview-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  color: #eee;
 }
 
 .preview-header {
-  padding: 15px 20px;
-  background-color: #2d2d2d; /* 深色背景 */
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-
-.preview-title {
-  margin-bottom: 15px;
-}
-
-.preview-title h2 {
-  margin: 0 0 8px 0;
-  font-size: 24px;
-  font-weight: 600;
-  color: #e0e0e0;
-}
-
-.preview-subtitle {
-  font-size: 16px;
-  color: #aaaaaa;
-}
-
-.preview-info {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.preview-author {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.author-details {
+.version-info {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
+  width: 100%;
 }
 
-.author-name {
-  font-weight: 500;
-  color: #e0e0e0;
+.version-badge {
+  font-size: 20px;
+  font-weight: 600;
+  color: #409eff;
 }
 
-.preview-stats {
+.version-meta {
   display: flex;
-  gap: 15px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
-.stat-badge {
+.meta-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  background-color: #333333;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #cccccc;
+  font-size: 14px;
+  color: #aaa;
+
+  .el-icon {
+    color: #888;
+  }
 }
 
-.preview-body {
-  padding: 0 20px 30px;
+.preview-actions {
+  display: flex;
+  gap: 10px;
+
+  .el-button {
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #ddd;
+    transition: all 0.3s;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    &.el-button--primary {
+      color: #409eff;
+    }
+
+    &.el-button--success {
+      color: #67c23a;
+    }
+
+    .el-icon {
+      margin-right: 4px;
+    }
+  }
+}
+
+.version-description-bar {
+  padding: 10px 24px;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #aaa;
+
+  .el-icon {
+    color: #909399;
+  }
+}
+
+.version-tags-bar {
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+
+  .tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .version-tag {
+    margin: 0;
+  }
+}
+
+.content-preview-area {
   flex: 1;
-  overflow-y: auto;
-}
-
-/* Markdown 内容样式 */
-.markdown-body {
-  font-size: 16px;
-  line-height: 1.8;
-  color: #e0e0e0;
-}
-
-.markdown-body h1,
-.markdown-body h2,
-.markdown-body h3,
-.markdown-body h4 {
-  margin-top: 1.5em;
-  margin-bottom: 0.8em;
-  font-weight: 600;
-  color: #e0e0e0;
-}
-
-.markdown-body p {
-  margin: 1em 0;
-}
-
-.markdown-body pre,
-.markdown-body code {
-  background-color: #2d2d2d;
-  border-radius: 4px;
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  color: #e0e0e0;
-}
-
-.markdown-body pre {
-  padding: 16px;
   overflow: auto;
-  margin-bottom: 16px;
+  padding: 0;
+
+  .preview-editor {
+    height: 100%;
+  }
 }
 
-.markdown-body code {
-  padding: 2px 5px;
-}
-
-/* 版本比较对话框样式 */
-.compare-content {
-  height: calc(100vh - 120px);
+.preview-loading {
   display: flex;
   flex-direction: column;
-  background-color: #1e1e1e; /* 深色背景 */
-  color: #e0e0e0;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  gap: 16px;
+  color: #aaa;
+
+  .loading-icon {
+    font-size: 40px;
+    animation: rotate 1.5s linear infinite;
+  }
+}
+
+/* 比较页面样式 */
+.compare-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  color: #eee;
+  position: relative;
+  background-color: #1e1e1e;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 顶部工具栏 */
+.top-toolbar {
+  height: 56px;
+  background-color: transparent;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 100;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  backdrop-filter: blur(5px);
+  margin: 0;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.toolbar-left {
+  gap: 12px;
+}
+
+.toolbar-right {
+  gap: 8px;
+}
+
+.diff-counter {
+  background-color: rgba(65, 105, 225, 0.15);
+  height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 15px;
+  border-radius: 6px;
+  border: 1px solid rgba(65, 105, 225, 0.3);
+
+  span {
+    font-size: 14px;
+    font-weight: 500;
+    color: #eee;
+  }
+}
+
+.nav-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.toolbar-btn {
+  height: 38px;
+  font-size: 14px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f0f0f0;
+  padding: 0 16px;
+  border-radius: 6px;
+  margin: 0;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 80px;
+
+  &:hover:not(:disabled) {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &.close-btn {
+    color: #e5e7eb;
+    border-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.05);
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+  }
+
+  .el-icon {
+    margin-right: 6px;
+    font-size: 16px;
+  }
+}
+
+/* 导航按钮样式 */
+.nav-buttons .toolbar-btn {
+  min-width: 40px;
+  padding: 0 12px;
+
+  &:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+  }
+
+  &:last-child {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+}
+
+/* 版本标题栏 */
+.version-header-bar {
+  display: flex;
+  width: 100%;
+  background-color: #1e1e1e;
+  border-bottom: 1px solid #333;
+  margin-top: 56px; /* 添加顶部边距，与工具栏高度一致 */
+  padding: 0;
+}
+
+.version-header {
+  flex: 1;
+  padding: 8px 16px;
+  position: relative;
+
+  &.old {
+    border-right: 1px solid #333;
+    padding-left: 16px;
+  }
+
+  &.current {
+    padding-left: 16px;
+  }
+}
+
+.version-label {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.version-header.old .version-label {
+  color: #dcdcdc;
+}
+
+.version-header.current .version-label {
+  color: #4fc1ff;
+}
+
+.version-date {
+  font-size: 12px;
+  color: #888;
+}
+
+.diff-viewer-wrapper {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  padding: 0;
+  margin: 0;
+
+  /* 让DiffViewer组件正确显示 */
+  :deep(.diff-container),
+  :deep(.monaco-container),
+  :deep(.diff-editor) {
+    height: 100% !important;
+    width: 100% !important;
+    border: none !important;
+  }
+
+  /* 增强差异显示 */
+  :deep(.current-diff-line) {
+    background-color: rgba(0, 122, 204, 0.2) !important;
+    border-left: 3px solid #0078d4 !important;
+  }
+
+  :deep(.line-delete) {
+    background-color: rgba(255, 0, 0, 0.1) !important;
+    border-left: 3px solid #ff3333 !important;
+  }
+
+  :deep(.line-insert) {
+    background-color: rgba(0, 255, 0, 0.1) !important;
+    border-left: 3px solid #33cc33 !important;
+  }
+}
+
+/* 编辑器状态栏 */
+.editor-statusbar {
+  height: 25px;
+  background-color: #007acc;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px;
+  font-size: 12px;
+  user-select: none;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  margin: 0;
+  border: none;
+}
+
+.status-left,
+.status-right {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 100%;
+
+  &.status-divider {
+    padding: 0;
+    opacity: 0.6;
+  }
+
+  &.status-position {
+    background-color: rgba(255, 255, 255, 0.2);
+    font-weight: 500;
+  }
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* 恢复版本确认对话框样式 */
+.restore-confirm-content {
+  padding: 20px;
+}
+
+.restore-confirm-content .el-alert {
+  border-radius: 8px;
+  padding: 15px 20px;
+}
+
+.restore-confirm-content p {
+  margin: 10px 0;
+  line-height: 1.6;
+  color: var(--el-text-color-regular);
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* 响应式设计 */
+@media screen and (max-width: 768px) {
+  .version-history-container {
+    padding: 10px;
+  }
+
+  .version-header {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .version-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .version-stats {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .stat-item {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* 添加新的样式 */
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.compare-dialog {
+  :deep(.el-dialog__body) {
+    padding: 0 !important;
+    height: 100vh;
+    overflow: hidden;
+  }
+}
+
+.compare-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .compare-header {
   margin-bottom: 20px;
-  padding: 15px;
-  background-color: #2d2d2d; /* 深色背景 */
-  border-radius: 8px;
 }
 
-.compare-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 20px;
-}
-
-.version-selector {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.version-label {
-  font-size: 14px;
-  color: #cccccc;
-}
-
-.diff-settings {
-  display: flex;
-  gap: 15px;
-  margin-left: auto;
-}
-
-/* IDE风格的差异比较容器 */
-.ide-diff-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid #444444;
-  border-radius: 8px;
-  overflow: hidden;
-  height: calc(100% - 80px);
-  background-color: #1e1e1e; /* 深色背景 */
-}
-
-.diff-panels {
-  display: flex;
+.diff-viewer {
   flex: 1;
   overflow: hidden;
 }
 
-.diff-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.tag-dialog-content {
+  padding: 20px;
 }
 
-.left-panel {
-  border-right: 1px solid #444444;
-}
-
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 15px;
-  background-color: #2d2d2d; /* 深色背景 */
-  border-bottom: 1px solid #444444;
-}
-
-.panel-version {
-  font-weight: 500;
-  color: #e0e0e0;
-}
-
-.panel-date {
-  color: #aaaaaa;
-  font-size: 13px;
-}
-
-.panel-content {
-  flex: 1;
-  padding: 15px;
-  overflow: auto;
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  font-size: 14px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  color: #e0e0e0;
-  background-color: #1e1e1e; /* 深色背景 */
-}
-
-/* 差异比较摘要 */
-.diff-summary {
-  display: flex;
-  padding: 10px 15px;
-  background-color: #2d2d2d; /* 深色背景 */
-  border-top: 1px solid #444444;
-}
-
-.summary-item {
-  display: flex;
-  align-items: center;
-  margin-right: 20px;
-  font-size: 13px;
-}
-
-.summary-icon {
-  margin-right: 6px;
-  display: flex;
-  align-items: center;
-}
-
-.summary-item.added .summary-icon {
-  color: #67c23a;
-}
-
-.summary-item.modified .summary-icon {
-  color: #e6a23c;
-}
-
-.summary-item.deleted .summary-icon {
-  color: #f56c6c;
-}
-
-/* 差异高亮样式 - 改进突出显示 */
-.diff-line {
-  display: flex;
-  margin-bottom: 2px;
-  border-radius: 3px;
-  position: relative;
-}
-
-.line-number {
-  color: #909399;
-  margin-right: 10px;
-  user-select: none;
-  min-width: 40px;
-  text-align: right;
-  padding: 0 5px;
-}
-
-.line-content {
-  flex: 1;
-  padding: 0 5px;
-}
-
-/* 增强差异高亮样式，类似于你图片中的效果 */
-.diff-added {
-  background-color: rgba(40, 124, 0, 0.5); /* 深绿色背景 */
-  position: relative;
-}
-
-.diff-added::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background-color: #67c23a; /* 绿色左边框 */
-}
-
-.diff-deleted {
-  background-color: rgba(124, 0, 0, 0.5); /* 深红色背景 */
-  position: relative;
-}
-
-.diff-deleted::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background-color: #f56c6c; /* 红色左边框 */
-}
-
-.diff-modified {
-  background-color: rgba(100, 70, 0, 0.5); /* 深黄色背景 */
-  position: relative;
-}
-
-.diff-modified::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background-color: #e6a23c; /* 黄色左边框 */
-}
-
-/* 突出显示具体差异文本 */
-.diff-text-added {
-  background-color: rgba(103, 194, 58, 0.6);
-  border-radius: 2px;
-  padding: 0 2px;
-}
-
-.diff-text-deleted {
-  background-color: rgba(245, 108, 108, 0.6);
-  border-radius: 2px;
-  padding: 0 2px;
-  text-decoration: line-through;
-}
-
-.diff-text-modified {
-  background-color: rgba(230, 162, 60, 0.6);
-  border-radius: 2px;
-  padding: 0 2px;
-}
-
-/* 恢复确认对话框 */
-.restore-confirm-content {
-  margin-bottom: 20px;
-}
-
-.restore-confirm-content p {
-  margin: 8px 0;
-}
-
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .compare-controls {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .diff-settings {
-    margin-left: 0;
-    margin-top: 10px;
-  }
-
-  .diff-panels {
+/* 响应式设计补充 */
+@media screen and (max-width: 768px) {
+  .header-actions {
     flex-direction: column;
   }
 
-  .left-panel {
-    border-right: none;
-    border-bottom: 1px solid #444444;
+  .version-actions {
+    flex-wrap: wrap;
+  }
+
+  .version-actions .el-button {
+    margin-bottom: 8px;
   }
 }
 
-/* 对比面板滚动条美化 */
-.panel-content::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.panel-content::-webkit-scrollbar-track {
-  background: #2d2d2d;
-}
-
-.panel-content::-webkit-scrollbar-thumb {
-  background: #555555;
-  border-radius: 4px;
-}
-
-.panel-content::-webkit-scrollbar-thumb:hover {
-  background: #666666;
-}
-
-/* 增加行高亮效果，类似于图片中的效果 */
-.highlight-row {
-  background-color: rgba(65, 105, 225, 0.2); /* 蓝色背景，类似于图片中的高亮行 */
+/* 版本标签样式 */
+:deep(.version-label-container) {
+  z-index: 100;
+  position: sticky;
+  top: 0;
+  background-color: rgba(30, 30, 30, 0.95);
   width: 100%;
-  display: block;
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  z-index: -1;
+  padding: 8px 0;
+  backdrop-filter: blur(5px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+:deep(.version-label-before) {
+  color: white;
+  font-weight: bold;
+  padding: 8px 15px;
+  border-radius: 4px;
+  display: inline-block;
+  margin: 5px 10px;
+  font-size: 14px;
+  width: auto;
+  max-width: 90%;
+  background-color: rgba(40, 40, 40, 0.8);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+:deep(.previous-version-label) {
+  border-left: 5px solid #409eff;
+}
+
+:deep(.current-version-label) {
+  border-left: 5px solid #67c23a;
+}
+
+:deep(.version-label-line) {
+  padding-top: 5px;
+  padding-bottom: 5px;
+  background-color: transparent;
+}
+
+.loading-more {
+  text-align: center;
+  padding: 20px 0;
+  color: #909399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.loading-more .el-icon {
+  font-size: 20px;
+  animation: rotate 1.5s linear infinite;
+}
+
+@keyframes rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.load-finished {
+  margin: 20px 0;
+  text-align: center;
+  color: #909399;
+  font-size: 14px;
 }
 </style>

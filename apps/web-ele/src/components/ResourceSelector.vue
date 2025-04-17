@@ -1,43 +1,55 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue';
-import { getFilesGroup } from '#/api/core/resouce.js'
+import {onMounted, ref} from 'vue';
+
+import {getFilesGroup} from '#/api/core/resouce.js';
 
 const props = defineProps({
   fileType: {
     type: String,
-    default: 'image'
-  }
-})
+    default: 'image',
+  },
+});
 
-const emit = defineEmits(['select'])
+const emit = defineEmits(['select']);
 
 // 资源列表
-const resources = ref([])
-const loading = ref(true)
-const currentPage = ref(1)
-const pageSize = ref(20)
-const totals = ref(0)
+const resources = ref([]);
+const loading = ref(true);
+const currentPage = ref(1);
+const pageSize = ref(20);
+const totals = ref(0);
 
 // 获取图片资源
 const fetchResources = async () => {
   try {
-   const param={
-      currentPage: 1,
-      pageSize: 20
-    }
-    const response = await getFilesGroup(param)
-    resources.value = response.records
+    const param = {
+      currentPage: currentPage.value,
+      pageSize: pageSize.value,
+    };
+    const response = await getFilesGroup(param);
+    resources.value = response.records;
+    totals.value = response.total;
+    currentPage.value = response.current;
+    pageSize.value = response.size;
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
+const handleSizeChange = (size) => {
+  pageSize.value = size;
+  fetchResources();
+};
+const handleCurrentChange = (page) => {
+  currentPage.value = page;
+  fetchResources();
+};
 
-onMounted(fetchResources)
+onMounted(fetchResources);
 
 // 选择处理
 const handleSelect = (resource) => {
-  emit('select', resource)
-}
+  emit('select', resource);
+};
 </script>
 
 <template>
@@ -53,7 +65,7 @@ const handleSelect = (resource) => {
           :src="resource.filePath"
           :alt="resource.fileName"
           class="resource-image"
-        >
+        />
         <div class="resource-name">{{ resource.fileName }}</div>
       </div>
     </div>

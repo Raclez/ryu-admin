@@ -1,5 +1,6 @@
 import type {RouteRecordRaw} from "vue-router";
-import {Help, Menu, User} from '@element-plus/icons-vue'
+import {Help, Menu, Operation, User} from '@element-plus/icons-vue'
+
 const routes: RouteRecordRaw[] = [
   {
     meta: {
@@ -29,15 +30,16 @@ const routes: RouteRecordRaw[] = [
         path: '/menus/tree',
         component: () => import('#/views/demos/menus/index.vue'),
       },
-      // {
-      //   meta: {
-      //     title: '标签管理',
-      //   },
-      //   name: 'TagsPage',
-      //   path: '/tags/page',
-      //   component: () => import('#/views/demos/tags/index.vue'),
-      // }
-      //
+      {
+        meta: {
+          title: '权限管理',
+          icon: Operation
+        },
+        name: 'PermissionMange',
+        path: '/permission/page',
+        component: () => import('#/views/demos/permission/index.vue'),
+      }
+
 
     ],
   },

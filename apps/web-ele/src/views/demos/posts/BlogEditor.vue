@@ -1,42 +1,63 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue';
-import { useRouter ,useRoute} from 'vue-router';
-import { useCategoryStore } from '#/store/category'
-import {useTagStore} from "#/store/tag";
+import type {Themes, ToolbarNames} from 'md-editor-v3';
+// 导入 markdown 编辑器及其类型
+import {MdEditor, MdPreview} from 'md-editor-v3';
 
+/**
+ * 博客编辑组件
+ *
+ * 功能：
+ * 1. Markdown编辑器集成
+ * 2. 博客信息设置（标题、分类、标签等）
+ * 3. 版权协议设置
+ * 4. 发布时间控制
+ * 5. 预览功能
+ */
+import {computed, onMounted, reactive, ref} from 'vue';
+import {useRoute, useRouter} from 'vue-router';
+
+// 导入ElementPlus图标
 import {
+  Close,
   Document,
   Download,
   Grid,
-  Delete,
   Plus,
   Position,
   Setting,
   Timer,
-  View, Close,
+  View,
 } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
-// 导入 md-editor-v3
-import { MdEditor, MdPreview } from 'md-editor-v3';
+// 导入时间处理库和防抖函数
+import dayjs from 'dayjs';
+import {ElMessage} from 'element-plus';
+import {debounce} from 'lodash-es';
 
-import {getPostsDetail, savePosts} from '#/api/core/posts.js';
+// 导入 API 服务
+import {getPostsDetail, savePosts, updatePosts} from '#/api/core/posts.js';
+// 导入资源选择器组件
+import ResourceSelector from '#/components/ResourceSelector.vue';
+import {useCategoryStore} from '#/store/category';
+import {useTagStore} from '#/store/tag';
 
 import 'md-editor-v3/lib/style.css';
-import ResourceSelector from "#/components/ResourceSelector.vue";
 
-// 路由
+// ====================== 基础配置与状态管理 ======================
+
+// 路由和状态管理
 const router = useRouter();
 const route = useRoute();
-const categoryStore = useCategoryStore()
-const tagStore = useTagStore()
-// 编辑器主题
-const editorTheme = ref('dark'); // 默认使用暗色主题
+const categoryStore = useCategoryStore();
+const tagStore = useTagStore();
 
-// md-editor-v3 工具栏配置
-const toolbars = [
+// 编辑器主题配置
+const editorTheme = ref<Themes>('dark'); // 默认使用暗色主题
+
+// 工具栏配置项
+const toolbars: ToolbarNames[] = [
   'bold',
   'italic',
-  'strikethrough',
+  'strikeThrough',
   'quote',
   'unorderedList',
   'orderedList',
@@ -49,107 +70,197 @@ const toolbars = [
   'next',
   'save',
   'fullscreen',
-  'underline',
-  'title',
-  'task',
-  'mermaid',
   'preview',
 ];
 
-// 状态变量
-const content = ref(`## 脚手架文件结构
+// 初始化默认内容
+const defaultContent = ``;
 
-\`\`\`lua
-├─ node_modules
-├─ public
-│  ├─ favicon.ico: 页签图标
-│  └─ index.html: 主页面
-├─ src
-│  ├─ assets: 存放静态资源
-│  │  └─ logo.png
-│  ├─ component: 存放组件
-│  │  └─ HelloWorld.vue
-│  ├─ App.vue: 汇总所有组件
-│  └─ main.js: 入口文件
-├─ .gitignore: git版本管制忽略的配置
-├─ babel.config.js: babel的配置文件
-├─ package.json: 应用包配置文件
-├─ README.md: 应用描述文件
-└─ package-lock.json: 包版本控制文件
-\`\`\`
-`);
-const isPreviewMode = ref(false);
-const settingsDialogVisible = ref(false);
-const inputTagVisible = ref(false);
-const newTag = ref('');
-const tagInput = ref(null);
-const catalog = ref([]); // 用于存储目录结构
+// ====================== 编辑器状态变量 ======================
 
-const resourceDialogVisible = ref(false)
+const content = ref(defaultContent); // 编辑器内容
+const isPreviewMode = ref(false); // 预览模式标识
+const settingsDialogVisible = ref(false); // 设置对话框显示状态
+const catalog = ref([]); // 目录结构
+const resourceDialogVisible = ref(false); // 资源选择对话框显示状态
+const TagsHasLoaded = ref(false); // 标签加载状态
 
-// 博客设置
+// ====================== 分类与标签处理 ======================
+
+/**
+ * 分类加载处理
+ * @param visible 下拉框可见状态
+ */
+const handleCategorySelectVisible = async (visible: boolean) => {
+  if (visible) {
+    try {
+      await categoryStore.fetchAllCategories();
+    } catch {
+      ElMessage.error('分类加载失败');
+    }
+  }
+};
+
+/**
+ * 标签选择处理
+ * @param visible 下拉框可见状态
+ */
+const handleTagSelectVisible = async (visible: boolean) => {
+  if (visible) {
+    try {
+      await tagStore.fetchAllTags();
+    } catch {
+      ElMessage.error('标签加载失败');
+    }
+  }
+};
+
+/**
+ * 获取标签名称
+ * @param tagId 标签ID
+ * @returns 标签名称或ID
+ */
+const getTagName = (tagId: number | string) => {
+  return tagStore.tags.find((t) => t.id === tagId)?.name || tagId;
+};
+
+// ====================== 博客设置数据 ======================
+
+/**
+ * 博客设置数据对象
+ * 集中管理博客所有可配置信息
+ */
 const blogSettings = ref({
-  title: '',
-  categoryId: '',
-  tagsIds: [],
-  excerpt: '',
-  visibility: 'public',
-  password: '',
-  isPublishImmediately: true,
-  scheduleTime: null,
-  allowComment: true,
-  slug: '',
-  seoTitle: '',
-  seoDescription: '',
-  coverImageId: null,
-  sort: 0,
-  isSticky: false,
-  isOriginal: true,
-  sourceUrl: '',
-  license: 'cc-by-4.0',
-});
-// 获取标签名称
-const getTagName = (tagId) => {
-  return tagStore.tags.find(t => t.id === tagId)?.name || tagId
-}
+  // 基本信息
+  title: '', // 标题
+  categoryId: '', // 分类ID
+  tagsIds: [] as (number | string)[], // 标签ID数组
+  excerpt: '', // 摘要
 
-const postId = ref(route.params?.id || '')
+  // 访问控制
+  visibility: 'public', // 访问权限：public/private/password
+  password: '', // 访问密码(当visibility为password时使用)
+
+  // 发布控制
+  isPublishImmediately: true, // 是否立即发布
+  scheduleTime: null, // 计划发布时间
+
+  // SEO相关
+  slug: '', // URL别名
+  seoTitle: '', // SEO标题
+  seoDescription: '', // SEO描述
+  coverImageId: null, // 封面图片ID
+  coverImageUrl: '', // 封面图片URL
+
+  // 高级选项
+  sort: 0, // 排序值
+  isSticky: false, // 是否置顶
+  isOriginal: true, // 是否原创
+  sourceUrl: '', // 转载来源
+  license: 'cc-by-4.0', // 版权协议
+  allowComment: true, // 允许评论
+});
+
+// ====================== 文章数据处理 ======================
+
+// 文章ID
+const postId = ref<string>((route.params?.id as string) || '');
+
+/**
+ * 获取博客详情
+ * 包含分类和标签的回显处理
+ */
 const fetchPostDetail = async () => {
   if (postId.value) {
-    const res = await getPostsDetail(postId.value)
-    blogSettings.value = {
-      ...res,
-      scheduleTime: res.scheduleTime ? dayjs(res.scheduleTime).format('YYYY-MM-DD HH:mm:ss') : null
+    try {
+      const res = await getPostsDetail(postId.value);
+
+      // 预加载分类和标签数据以确保表单可用
+      await Promise.all([
+        categoryStore.fetchAllCategories(),
+        tagStore.fetchAllTags(),
+      ]);
+
+      // 设置博客数据，处理数据兼容性
+      blogSettings.value = {
+        ...res,
+        tagsIds: res.tagIds || [], // 确保标签IDs存在
+        categoryId: res.categoryId || '', // 确保分类ID存在
+        coverImageUrl: res.coverImageUrl || '', // 确保封面URL存在
+        license: res.license || 'cc-by-4.0', // 确保版权协议存在
+        isPublishImmediately: !res.scheduleTime, // 根据是否有计划时间判断发布类型
+        // 格式化计划发布时间为易读格式
+        scheduleTime: res.scheduleTime
+          ? dayjs(res.scheduleTime).format('YYYY-MM-DD HH:mm:ss')
+          : null,
+      };
+
+      // 设置编辑器内容
+      content.value = res.content || '';
+      TagsHasLoaded.value = true;
+    } catch (error: any) {
+      ElMessage.error(`加载文章失败: ${error.message}`);
     }
-    content.value = res.content
   }
-}
 
+  if (!postId.value) {
+    content.value = defaultContent;
+  }
+};
 
+// ====================== 资源管理功能 ======================
+
+/**
+ * 打开资源选择器
+ */
 const openResourceSelector = async () => {
-  resourceDialogVisible.value = true
-}
+  resourceDialogVisible.value = true;
+};
 
-const handleResourceSelect = (resource) => {
-  blogSettings.value.coverImageId = resource.id
-  blogSettings.value.coverImageUrl = resource.filePath
-  resourceDialogVisible.value = false
-}
+/**
+ * 处理资源选择
+ * @param resource 选中的资源对象
+ */
+const handleResourceSelect = (resource: any) => {
+  blogSettings.value.coverImageId = resource.id;
+  blogSettings.value.coverImageUrl = resource.filePath;
+  resourceDialogVisible.value = false;
+};
 
+/**
+ * 移除封面图片
+ */
 const removeCover = () => {
-  blogSettings.value.coverImageId = null
-  blogSettings.value.coverImageUrl = ''
-}
+  blogSettings.value.coverImageId = null;
+  blogSettings.value.coverImageUrl = '';
+};
 
+/**
+ * 处理封面图片上传成功
+ */
+const handleSuccessChange = (file: any) => {
+  if (file.code === 200) {
+    ElMessage.success('封面图片上传成功');
+    blogSettings.value.coverImageId = file.data.id;
+  } else {
+    ElMessage.error('封面图片上传失败');
+  }
+};
 
+// ====================== 编辑器状态管理 ======================
 
-// 光标位置
+/**
+ * 光标位置信息
+ */
 const cursorPosition = reactive({
   line: 1,
   column: 0,
 });
 
-// 计算属性：字数统计
+/**
+ * 计算属性：文本统计信息
+ * 提供字符数、单词数、行数等统计
+ */
 const wordCount = computed(() => {
   const text = content.value || '';
   return {
@@ -159,15 +270,67 @@ const wordCount = computed(() => {
   };
 });
 
-// 方法
+/**
+ * 获取目录结构
+ * @param data 编辑器生成的目录数据
+ */
+const onGetCatalog = (data: any) => {
+  catalog.value = data;
+};
+
+/**
+ * 编辑器配置对象
+ * 设置延迟渲染等性能优化参数
+ */
+const editorConfig = {
+  lazy: true, // 启用延迟渲染提高性能
+  lazyTime: 500, // 延迟渲染时间(毫秒)
+  noMermaid: false, // 是否禁用mermaid渲染
+  sanitize: false, // 是否开启XSS过滤
+  style: {
+    height: '100%',
+    boxShadow: 'none',
+  },
+};
+
+/**
+ * 防抖处理内容变化事件
+ * 避免频繁更新和重绘
+ */
+const onChangeMd = debounce((value: string) => {
+  content.value = value;
+  updateCursorPosition();
+}, 300);
+
+/**
+ * 更新编辑器光标位置
+ */
+const updateCursorPosition = () => {
+  // 简单实现，实际项目中可通过编辑器API获取
+  cursorPosition.line = content.value.split('\n').length;
+  cursorPosition.column = 0;
+};
+
+// ====================== 用户交互功能 ======================
+
+/**
+ * 切换预览模式
+ */
 const togglePreview = () => {
   isPreviewMode.value = !isPreviewMode.value;
 };
 
+/**
+ * 打开设置对话框
+ */
 const openSettings = () => {
   settingsDialogVisible.value = true;
 };
 
+/**
+ * 保存设置
+ * 验证必要字段并关闭设置对话框
+ */
 const saveSettings = () => {
   if (!blogSettings.value.title.trim()) {
     ElMessage.warning('请输入文章标题');
@@ -178,10 +341,14 @@ const saveSettings = () => {
   ElMessage.success('设置已保存');
 };
 
+/**
+ * 保存草稿
+ * 将文章保存但不发布
+ */
 const saveDraft = async () => {
   if (!blogSettings.value.title.trim()) {
     ElMessage.warning('请先设置文章标题');
-    await handleSubmit(false)
+    await handleSubmit(false);
     settingsDialogVisible.value = true;
     return;
   }
@@ -189,21 +356,51 @@ const saveDraft = async () => {
   ElMessage.success('草稿已保存');
 };
 
-const handleSubmit = async (isPublish = true) => {
+/**
+ * 直接在编辑器中更新标题
+ */
+const updateTitleFromEditor = (event: any) => {
+  blogSettings.value.title = event.target.innerText;
+};
 
+/**
+ * 跳转到版本历史页面
+ */
+const goToVersionHistory = () => {
+  if (!postId.value) {
+    ElMessage.warning('请先保存文章，然后才能查看版本历史');
+    return;
+  }
+
+  router.push(`/posts/historyVersion/${postId.value}`);
+};
+
+// ====================== 数据提交与保存 ======================
+
+/**
+ * 提交文章数据（保存或发布）
+ * @param isPublish 是否在保存后返回列表
+ */
+const handleSubmit = async (isPublish = true) => {
+  // 标题验证
   if (!blogSettings.value.title.trim()) {
     ElMessage.warning('请先设置文章标题');
     settingsDialogVisible.value = true;
     return;
   }
+
   try {
+    // 构建提交数据
     const baseData = {
       title: blogSettings.value.title,
       content: content.value,
       excerpt: blogSettings.value.excerpt,
       categoryId: blogSettings.value.categoryId,
-      tagIds: blogSettings.value.tagIds,
-      scheduleTime: blogSettings.value.scheduleTime,
+      tagIds: blogSettings.value.tagsIds,
+      // 处理发布时间逻辑：立即发布时清空计划时间
+      scheduleTime: blogSettings.value.isPublishImmediately
+        ? null
+        : blogSettings.value.scheduleTime,
       allowComment: blogSettings.value.allowComment,
       seoTitle: blogSettings.value.seoTitle,
       seoDescription: blogSettings.value.seoDescription,
@@ -215,8 +412,11 @@ const handleSubmit = async (isPublish = true) => {
       sort: blogSettings.value.sort,
       password: blogSettings.value.password,
       slug: blogSettings.value.slug,
-    }
+      license: blogSettings.value.license,
+      sourceUrl: blogSettings.value.sourceUrl,
+    };
 
+    // 区分新建和更新操作
     const postData = postId.value
       ? {
         id: postId.value,
@@ -224,97 +424,44 @@ const handleSubmit = async (isPublish = true) => {
       }
       : {
         ...baseData,
-        // 新建时需要添加的字段
+      };
 
-      }
-
+    // 提交到服务器
     if (postId.value) {
-      await updatePosts(postData)
-      ElMessage.success('文章更新成功！')
+      await updatePosts(postData);
+      ElMessage.success('文章更新成功！');
     } else {
-      await savePosts(postData)
-      ElMessage.success('文章创建成功！')
+      await savePosts(postData);
+      ElMessage.success('文章创建成功！');
     }
 
+    // 发布后跳转到列表页
     if (isPublish) {
-      await router.push('/posts/page')
+      await router.push('/posts/page');
     }
-  } catch (error) {
-    ElMessage.error(`操作失败: ${error.message}`)
-  }
-}
-
-const goToVersionHistory = () => {
-  router.push('/posts/postVersion');
-  // if (router.value) {
-  //   router.push('/posts/postVersion')
-  // } else {
-  //   ElMessage({
-  //     message: '正在跳转到版本历史页面...',
-  //     type: 'info'
-  //   })
-  //   // 实际项目中可以使用 window.location.href = '/version-history'
-  // }
-};
-
-const showTagInput = () => {
-  inputTagVisible.value = true;
-  nextTick(() => {
-    tagInput.value.focus();
-  });
-};
-
-const confirmTag = () => {
-  const value = newTag.value.trim();
-  if (value && !blogSettings.value.tagsIds.includes(value)) {
-    blogSettings.value.tagsIds.push(value);
-  }
-  newTag.value = '';
-  inputTagVisible.value = false;
-};
-
-const removeTag = (tag) => {
-  blogSettings.value.tagsIds = blogSettings.value.tagsIds.filter((t) => t !== tag);
-};
-
-const handleSuccessChange = (file) => {
-  if (file.code === 200) {
-    ElMessage.success('封面图片上传成功');
-    blogSettings.value.coverImageId = file.data.id;
-    console.log('上传成功', blogSettings.value.coverImageId);
-  } else {
-    ElMessage.error('封面图片上传失败');
+  } catch (error: any) {
+    ElMessage.error(`操作失败: ${error.message}`);
   }
 };
 
-// 更新标题
-const updateTitleFromEditor = (event) => {
-  blogSettings.value.title = event.target.innerText;
-};
+// ====================== 生命周期钩子 ======================
 
-// 获取目录结构
-const onGetCatalog = (data) => {
-  catalog.value = data;
-};
-
-// 内容变化处理
-const onChange = (value) => {
-  content.value = value;
-  updateCursorPosition();
-};
-
-// 更新光标位置 - 通过md-editor-v3的API实现
-const updateCursorPosition = () => {
-  // 在实际应用中，可以通过md-editor-v3的API获取光标位置
-  // 这里简单模拟一下
-  cursorPosition.line = content.value.split('\n').length;
-  cursorPosition.column = 0;
-};
-
-// 生命周期钩子
+/**
+ * 组件挂载时执行
+ * 根据编辑/新建模式加载不同数据
+ */
 onMounted(async () => {
-  if (postId.value) {
-    await fetchPostDetail()
+  try {
+    // 初始化数据
+    if (postId.value) {
+      // 编辑模式：加载详情
+      await fetchPostDetail();
+    } else {
+      // 新建模式：预加载分类
+      await categoryStore.fetchAllCategories();
+    }
+  } catch {
+    ElMessage.error('数据加载失败');
   }
 });
 </script>
@@ -352,7 +499,11 @@ onMounted(async () => {
           <el-icon><Setting /></el-icon>
           <span>设置</span>
         </el-button>
-        <el-button type="primary"  @click="handleSubmit(true)" class="publish-btn">
+        <el-button
+          class="publish-btn"
+          type="primary"
+          @click="handleSubmit(true)"
+        >
           <el-icon><Position /></el-icon>
           <span>{{ postId ? '更新发布' : '发布' }}</span>
         </el-button>
@@ -362,25 +513,17 @@ onMounted(async () => {
     <!-- 编辑器主体 -->
     <div class="editor-main">
       <div v-if="isPreviewMode" class="preview-container">
-        <!--        <div class="preview-heading">-->
-        <!--          <el-icon><View /></el-icon>-->
-        <!--          <span>{{ blogSettings.title }}</span>-->
-        <!--        </div>-->
         <div class="divider"></div>
         <div class="preview-content">
           <MdPreview :model-value="content" />
         </div>
       </div>
       <div v-else class="edit-container">
-        <!--        <div class="editor-titleline">-->
-        <!--          <span class="heading-mark"># </span>-->
-        <!--          <span class="title-content" contenteditable @input="updateTitleFromEditor($event)" @blur="updateTitleFromEditor($event)">{{ blogSettings.title || 'vue笔记' }}</span>-->
-        <!--        </div>-->
         <div class="editor-content">
           <MdEditor
             v-model="content"
             @on-get-catalog="onGetCatalog"
-            @on-change="onChange"
+            :no-preview-touch-bottom="true"
             :theme="editorTheme"
             code-theme="github"
             class="md-editor"
@@ -388,11 +531,16 @@ onMounted(async () => {
             show-code-row-number
             auto-detect-code
             :code-mirror-options="{
-              // 底层codemirror配置
               lineWrapping: true, // 代码自动换行
               autoCloseBrackets: true, // 自动补全括号
             }"
             :toolbars="toolbars"
+            :preview-lazy="true"
+            :preview-renderer="{
+              cdn: 'https://cdn.jsdelivr.net/npm/katex@0.16.7/dist', // 使用CDN加速
+            }"
+            :style="editorConfig.style"
+            @on-change="onChangeMd"
           />
         </div>
       </div>
@@ -418,6 +566,7 @@ onMounted(async () => {
       :close-on-click-modal="false"
     >
       <el-tabs>
+        <!-- 基本设置选项卡 -->
         <el-tab-pane label="基本设置">
           <el-form
             :model="blogSettings"
@@ -437,10 +586,10 @@ onMounted(async () => {
                 v-model="blogSettings.categoryId"
                 placeholder="请选择分类"
                 style="width: 100%"
-                @click="categoryStore.fetchCategories()"
+                @visible-change="handleCategorySelectVisible"
               >
                 <el-option
-                  v-for="item in categoryStore.categories"
+                  v-for="item in categoryStore.allCategories"
                   :key="item.id"
                   :label="item.name"
                   :value="item.id"
@@ -449,34 +598,24 @@ onMounted(async () => {
             </el-form-item>
 
             <el-form-item label="标签">
-              <div class="tag-wrapper">
-                <el-tag
-                  v-for="tagId in blogSettings.tagsIds"
-                  :key="tagId"
-                  closable
-                  @close="removeTag(tagId)"
-                  class="tag-item"
-                >
-                  {{ getTagName(tagId) }}
-                </el-tag>
-                <el-input
-                  v-if="inputTagVisible"
-                  ref="tagInput"
-                  v-model="newTag"
-                  class="tag-input"
-                  size="small"
-                  @keyup.enter="confirmTag"
-                  @blur="confirmTag"
+              <el-select
+                v-model="blogSettings.tagsIds"
+                :loading="tagStore.loading"
+                allow-create
+                default-first-option
+                filterable
+                multiple
+                placeholder="请选择或创建标签"
+                style="width: 100%"
+                @visible-change="handleTagSelectVisible"
+              >
+                <el-option
+                  v-for="item in tagStore.allTags"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id"
                 />
-                <el-button
-                  v-else
-                  class="button-new-tag"
-                  size="small"
-                  @click="showTagInput"
-                >
-                  + 新标签
-                </el-button>
-              </div>
+              </el-select>
             </el-form-item>
 
             <el-form-item label="摘要">
@@ -492,6 +631,7 @@ onMounted(async () => {
           </el-form>
         </el-tab-pane>
 
+        <!-- 发布设置选项卡 -->
         <el-tab-pane label="发布设置">
           <el-form
             :model="blogSettings"
@@ -520,13 +660,13 @@ onMounted(async () => {
 
             <el-form-item label="发布时间">
               <el-radio-group v-model="blogSettings.isPublishImmediately">
-                <el-radio label="true">立即发布</el-radio>
-                <el-radio label="false">定时发布</el-radio>
+                <el-radio :label="true">立即发布</el-radio>
+                <el-radio :label="false">定时发布</el-radio>
               </el-radio-group>
             </el-form-item>
 
             <el-form-item
-              v-if="blogSettings.isPublishImmediately === 'false'"
+              v-if="!blogSettings.isPublishImmediately"
               label="定时时间"
             >
               <el-date-picker
@@ -544,6 +684,7 @@ onMounted(async () => {
           </el-form>
         </el-tab-pane>
 
+        <!-- SEO设置选项卡 -->
         <el-tab-pane label="SEO设置">
           <el-form
             :model="blogSettings"
@@ -577,27 +718,15 @@ onMounted(async () => {
                 show-word-limit
               />
             </el-form-item>
-            <el-dialog
-              v-model="resourceDialogVisible"
-              title="选择封面图片"
-              width="80%"
-            >
-              <ResourceSelector
-                @select="handleResourceSelect"
-                file-type="image"
-              />
-            </el-dialog>
+
             <el-form-item label="封面图片">
-              <div
-                class="cover-container"
-                @click="openResourceSelector"
-              >
+              <div class="cover-container" @click="openResourceSelector">
                 <div class="cover-wrapper">
                   <img
                     v-if="blogSettings.coverImageUrl"
                     :src="blogSettings.coverImageUrl"
                     class="cover-image"
-                  >
+                  />
                   <div v-else class="empty-cover">
                     <el-icon><Plus /></el-icon>
                     <span>点击选择封面</span>
@@ -615,6 +744,7 @@ onMounted(async () => {
           </el-form>
         </el-tab-pane>
 
+        <!-- 高级选项选项卡 -->
         <el-tab-pane label="高级选项">
           <el-form
             :model="blogSettings"
@@ -666,15 +796,66 @@ onMounted(async () => {
               </el-select>
             </el-form-item>
 
-            <el-form-item label="主题">
-              <el-select
-                v-model="editorTheme"
-                placeholder="选择编辑器主题"
-                style="width: 100%"
-              >
-                <el-option label="默认主题" value="light" />
-                <el-option label="暗色主题" value="dark" />
-              </el-select>
+            <!-- 版权协议可视化展示 -->
+            <el-form-item label="版权展示">
+              <div class="license-preview">
+                <template v-if="blogSettings.license === 'cc-by-4.0'">
+                  <div class="license-item">
+                    <span>知识共享署名 4.0 国际许可协议</span>
+                    <div class="license-icons">
+                      <img
+                        alt="CC BY 4.0"
+                        src="https://licensebuttons.net/l/by/4.0/88x31.png"
+                        title="知识共享署名 4.0 国际许可协议"
+                      />
+                    </div>
+                  </div>
+                </template>
+                <template v-else-if="blogSettings.license === 'cc-by-sa-4.0'">
+                  <div class="license-item">
+                    <span>知识共享署名-相同方式共享 4.0 国际许可协议</span>
+                    <div class="license-icons">
+                      <img
+                        alt="CC BY-SA 4.0"
+                        src="https://licensebuttons.net/l/by-sa/4.0/88x31.png"
+                        title="知识共享署名-相同方式共享 4.0 国际许可协议"
+                      />
+                    </div>
+                  </div>
+                </template>
+                <template v-else-if="blogSettings.license === 'cc-by-nc-4.0'">
+                  <div class="license-item">
+                    <span>知识共享署名-非商业性使用 4.0 国际许可协议</span>
+                    <div class="license-icons">
+                      <img
+                        alt="CC BY-NC 4.0"
+                        src="https://licensebuttons.net/l/by-nc/4.0/88x31.png"
+                        title="知识共享署名-非商业性使用 4.0 国际许可协议"
+                      />
+                    </div>
+                  </div>
+                </template>
+                <template v-else-if="blogSettings.license === 'public-domain'">
+                  <div class="license-item">
+                    <span>公共领域</span>
+                    <div class="license-icons">
+                      <img
+                        alt="Public Domain"
+                        src="https://licensebuttons.net/p/zero/1.0/88x31.png"
+                        title="公共领域"
+                      />
+                    </div>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="license-item">
+                    <span>保留所有权利</span>
+                    <div class="license-icons">
+                      <span>© 版权所有</span>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -687,10 +868,18 @@ onMounted(async () => {
         </span>
       </template>
     </el-dialog>
+
+    <!-- 资源选择对话框 -->
+    <el-dialog v-model="resourceDialogVisible" title="选择封面图片" width="80%">
+      <ResourceSelector file-type="image" @select="handleResourceSelect"/>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
+/**
+ * 编辑器容器样式
+ */
 .blog-editor-container {
   display: flex;
   flex-direction: column;
@@ -701,6 +890,9 @@ onMounted(async () => {
   color: #e0e0e0; /* 浅色文字 */
 }
 
+/**
+ * 顶部工具栏样式
+ */
 .editor-header {
   display: flex;
   justify-content: space-between;
@@ -734,6 +926,9 @@ onMounted(async () => {
   padding: 6px 16px;
 }
 
+/**
+ * 编辑器主体样式
+ */
 .editor-main {
   flex: 1;
   display: flex;
@@ -749,27 +944,6 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-.editor-titleline {
-  padding: 16px 16px 8px;
-  display: flex;
-  align-items: baseline;
-  font-size: 28px;
-  font-weight: 700;
-  border-bottom: 1px dashed #444444;
-  background-color: #333333; /* 深色背景 */
-  color: #ffffff;
-}
-
-.heading-mark {
-  color: #909399;
-  margin-right: 4px;
-}
-
-.title-content {
-  outline: none;
-  flex: 1;
-}
-
 .editor-content {
   flex: 1;
   overflow: auto;
@@ -781,23 +955,15 @@ onMounted(async () => {
   border: none;
 }
 
+/**
+ * 预览模式样式
+ */
 .preview-container {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background-color: #2d2d2d; /* 深色背景 */
-}
-
-.preview-heading {
-  padding: 12px 16px;
-  font-size: 22px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background-color: #333333; /* 深色背景 */
-  color: #ffffff;
 }
 
 .divider {
@@ -813,6 +979,9 @@ onMounted(async () => {
   background-color: #2d2d2d; /* 深色背景 */
 }
 
+/**
+ * 底部状态栏样式
+ */
 .editor-statusbar {
   display: flex;
   justify-content: space-between;
@@ -823,38 +992,9 @@ onMounted(async () => {
   color: #aaaaaa;
 }
 
-/* 标签样式 */
-.tag-wrapper {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.tag-item {
-  margin-right: 0;
-  margin-bottom: 0;
-}
-
-.tag-input {
-  width: 100px;
-  margin-right: 0;
-}
-
-.button-new-tag {
-  height: 32px;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-/* 封面图片提示 */
-.cover-tip {
-  font-size: 12px;
-  color: #aaaaaa;
-  margin-top: 8px;
-}
-
-/* 对话框样式 */
+/**
+ * 设置对话框样式
+ */
 :deep(.blog-settings-dialog) {
   border-radius: 8px;
   background-color: #333333; /* 深色背景 */
@@ -864,6 +1004,7 @@ onMounted(async () => {
 :deep(.blog-settings-dialog .el-dialog__header) {
   border-bottom: 1px solid #444444;
   padding: 16px 20px;
+  margin-right: 0;
   color: #ffffff;
 }
 
@@ -878,13 +1019,57 @@ onMounted(async () => {
   background-color: #333333; /* 深色背景 */
 }
 
-/* 自定义md-editor-v3样式 */
+:deep(.blog-settings-dialog .el-form-item__label) {
+  color: #e0e0e0;
+}
+
+:deep(.blog-settings-dialog .el-tabs__item) {
+  color: #b0b0b0;
+}
+
+:deep(.blog-settings-dialog .el-tabs__item.is-active) {
+  color: #409eff;
+}
+
+:deep(.blog-settings-dialog .el-tabs__nav-wrap::after) {
+  background-color: #444444;
+}
+
+:deep(.blog-settings-dialog .el-select .el-input__wrapper) {
+  background-color: #2d2d2d;
+  box-shadow: 0 0 0 1px #555 inset;
+}
+
+:deep(.blog-settings-dialog .el-input__wrapper) {
+  background-color: #2d2d2d;
+  box-shadow: 0 0 0 1px #555 inset;
+}
+
+:deep(.blog-settings-dialog .el-input__inner) {
+  color: #e0e0e0;
+}
+
+:deep(.blog-settings-dialog .el-textarea__inner) {
+  background-color: #2d2d2d;
+  color: #e0e0e0;
+  border-color: #555;
+}
+
+:deep(.blog-settings-dialog .el-radio__label) {
+  color: #e0e0e0;
+}
+
+/**
+ * 自定义md-editor-v3样式
+ */
 :deep(.md-editor-v3) {
   --md-bk-color: #2d2d2d !important;
   --md-border-color: #444444 !important;
 }
 
-/* 修改样式部分 */
+/**
+ * 封面图片样式
+ */
 .cover-container {
   cursor: pointer;
   transition: all 0.3s;
@@ -898,11 +1083,11 @@ onMounted(async () => {
 
 .cover-wrapper {
   position: relative;
-  border: 2px dashed var(--el-border-color);
+  border: 2px dashed #555;
   border-radius: 8px;
   overflow: hidden;
-  background: var(--el-fill-color-light);
-  min-height: 240px;
+  background-color: #2d2d2d;
+  min-height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -922,7 +1107,7 @@ onMounted(async () => {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: var(--el-text-color-secondary);
+  color: #aaaaaa;
 
   .el-icon {
     font-size: 32px;
@@ -959,5 +1144,77 @@ onMounted(async () => {
   opacity: 1;
 }
 
+/**
+ * 优化 Markdown 编辑器样式
+ */
+:deep(.md-editor-v3 .md-editor-preview) {
+  padding: 16px 24px;
+  color: #e0e0e0;
+  font-size: 16px;
+  line-height: 1.7;
+}
 
+:deep(.md-editor-v3 .md-editor-preview h1),
+:deep(.md-editor-v3 .md-editor-preview h2),
+:deep(.md-editor-v3 .md-editor-preview h3) {
+  margin-top: 24px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #444;
+  padding-bottom: 8px;
+}
+
+:deep(.md-editor-v3 .md-editor-preview code) {
+  background-color: #2a2a2a;
+  border-radius: 3px;
+  padding: 2px 5px;
+}
+
+:deep(.md-editor-v3 .md-editor-preview pre) {
+  margin: 16px 0;
+  border-radius: 6px;
+}
+
+:deep(.md-editor-v3 .md-editor-preview img) {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 16px 0;
+  background-color: #444;
+  border-radius: 6px;
+}
+
+:deep(.md-editor-v3 .md-editor-preview-lazy-loading) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  color: #aaa;
+}
+
+/**
+ * 版权协议展示样式
+ */
+.license-preview {
+  background-color: #2a2a2a;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.license-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.license-icons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.license-icons img {
+  height: 31px;
+}
 </style>

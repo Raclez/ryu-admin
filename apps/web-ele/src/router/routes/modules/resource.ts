@@ -1,5 +1,5 @@
 import type { RouteRecordRaw } from 'vue-router';
-import { Picture, Rank } from '@element-plus/icons-vue';
+import {CreditCard, Picture, Rank} from '@element-plus/icons-vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -21,6 +21,17 @@ const routes: RouteRecordRaw[] = [
         path: '/resource/picture',
         component: () => import('#/views/demos/resource/picture.vue'),
       },
+      {
+        path: '/resource/netdisk',
+        name: 'NetDisk',
+        component: () => import('#/views/demos/netdisk/index.vue'),
+        meta: {
+          title: '个人网盘',
+          icon: CreditCard,
+        },
+      },
+
+
       // {
       //   meta: {
       //     title: '菜单管理',

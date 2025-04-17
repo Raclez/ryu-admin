@@ -1,11 +1,8 @@
 import {requestClient} from "#/api/request";
 
-export interface DeleteTagsParams {
-  id: string | number; // 根据实际 ID 类型调整
+export async function getAllTags() {
+  return requestClient.get('/ryu-content/tags/list');
 }
-
-
-
 export async function getTagsPage(params) {
   return requestClient.get('/ryu-content/tags/page', {params});
 }
