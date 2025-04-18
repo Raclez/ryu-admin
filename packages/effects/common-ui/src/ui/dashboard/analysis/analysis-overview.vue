@@ -27,7 +27,7 @@ withDefaults(defineProps<Props>(), {
 <template>
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
     <template v-for="item in items" :key="item.title">
-      <Card :title="item.title" class="w-full">
+      <Card :title="item.title" class="w-full analysis-card">
         <CardHeader>
           <CardTitle class="text-xl">{{ item.title }}</CardTitle>
         </CardHeader>
@@ -39,7 +39,9 @@ withDefaults(defineProps<Props>(), {
             class="text-xl"
             prefix=""
           />
-          <VbenIcon :icon="item.icon" class="size-8 flex-shrink-0" />
+          <div class="icon-wrapper">
+            <VbenIcon :icon="item.icon" class="size-8 flex-shrink-0 text-gray-600"/>
+          </div>
         </CardContent>
         <CardFooter class="justify-between">
           <span>{{ item.totalTitle }}</span>
@@ -53,3 +55,27 @@ withDefaults(defineProps<Props>(), {
     </template>
   </div>
 </template>
+
+<style scoped>
+.analysis-card {
+  transition: all 0.3s ease;
+}
+
+.analysis-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: rgba(150, 150, 150, 0.1);
+}
+
+:deep(.text-xl) {
+  color: var(--el-text-color-primary);
+}
+</style>

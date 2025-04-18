@@ -1,29 +1,4 @@
-import type {RouteRecordRaw} from "vue-router";
-import {Crop, Female, Picture} from "@element-plus/icons-vue";
+// 此路由模块已移动到system.ts中
+// 监控功能整合到系统管理模块
 
-
-const routes: RouteRecordRaw[] = [
-  {
-    meta: {
-      icon: Female,
-      keepAlive: true,
-      order: 1020,
-      title: '监控管理',
-    },
-    name: 'SysMonitor',
-    path: '/monitor',
-    children: [
-      {
-        meta: {
-          title: '资源监控',
-          icon: Crop,
-        },
-        name: 'cc',
-        path: '/monitor/sys',
-        component: () => import('#/views/demos/system/index.vue'),
-      },
-    ],
-  },
-];
-
-export default routes;
+export default [];

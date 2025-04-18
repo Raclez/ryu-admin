@@ -58,10 +58,7 @@ git clone https://github.com/vbenjs/vue-vben-admin.git
 - 安装依赖
 
 ```bash
-cd vue-vben-admin
-
-corepack enable
-
+cd vben-admin
 pnpm install
 ```
 

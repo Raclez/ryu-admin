@@ -6,7 +6,7 @@
           <el-input
             v-model="searchQuery"
             placeholder="搜索图片..."
-            prefix-icon="el-icon-search"
+            prefix-icon="Search"
             clearable
             @clear="handleSearch"
             @input="handleSearch"
@@ -71,21 +71,30 @@
                   <el-button
                     size="small"
                     circle
-                    icon="el-icon-view"
                     @click.stop="previewImage(image)"
-                  />
+                  >
+                    <el-icon>
+                      <View/>
+                    </el-icon>
+                  </el-button>
                   <el-button
                     size="small"
                     circle
-                    icon="el-icon-copy-document"
                     @click.stop="copyImageUrl(image.url)"
-                  />
+                  >
+                    <el-icon>
+                      <DocumentCopy/>
+                    </el-icon>
+                  </el-button>
                   <el-button
                     size="small"
                     circle
-                    icon="el-icon-delete"
                     @click.stop="confirmDelete(image)"
-                  />
+                  >
+                    <el-icon>
+                      <Delete/>
+                    </el-icon>
+                  </el-button>
                 </div>
                 <div class="image-type">
                   {{ image.source === 'remote' ? '图床' : '本地' }}
@@ -113,22 +122,6 @@
       />
     </div>
 
-    <!-- 图片预览对话框 -->
-<!--    <el-dialog v-model="previewVisible" title="图片预览" width="auto">-->
-<!--      <img :src="previewImageUrl" class="preview-image" />-->
-<!--      <div class="image-details">-->
-<!--        <p><strong>文件名:</strong> {{ currentImage?.name }}</p>-->
-<!--        <p><strong>大小:</strong> {{ formatSize(currentImage?.size) }}</p>-->
-<!--        <p><strong>上传日期:</strong> {{ formatDate(currentImage?.uploadDate) }}</p>-->
-<!--        <p><strong>链接:</strong> <el-input v-model="currentImage?.url" readonly>-->
-<!--          <template #append>-->
-<!--            <el-button @click="copyImageUrl(currentImage?.url)">复制</el-button>-->
-<!--          </template>-->
-<!--        </el-input>-->
-<!--        </p>-->
-<!--      </div>-->
-<!--    </el-dialog>-->
-
     <!-- 删除确认对话框 -->
     <el-dialog
       v-model="deleteDialogVisible"
@@ -143,309 +136,334 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 图片预览组件 -->
+    <el-image-viewer
+      v-if="imageViewerVisible"
+      :hide-on-click-modal="false"
+      :initial-index="previewIndex"
+      :url-list="previewImageUrls"
+      @close="closeImageViewer"
+    >
+      <!-- 图片信息 -->
+      <template #extra>
+        <div v-if="currentPreviewImage" class="image-viewer-extra">
+          <div class="image-viewer-info">
+            <p><strong>文件名:</strong> {{ currentPreviewImage.name }}</p>
+            <p><strong>大小:</strong> {{ formatSize(currentPreviewImage.size) }}</p>
+            <p><strong>上传时间:</strong> {{ formatDate(currentPreviewImage.uploadDate) }}</p>
+          </div>
+          <div class="image-viewer-actions">
+            <el-button size="small" type="primary" @click="copyImageUrl(currentPreviewImage.url)">
+              <el-icon>
+                <DocumentCopy/>
+              </el-icon>
+              复制链接
+            </el-button>
+          </div>
+        </div>
+      </template>
+    </el-image-viewer>
   </div>
 </template>
 
-<script>
+<script lang="ts" setup>
 import { computed, ref, onMounted } from 'vue';
-import { ElMessage, ElLoading } from 'element-plus';
+import {ElMessage, ElMessageBox, ElImageViewer} from 'element-plus';
+import {View, DocumentCopy, Delete, Search} from '@element-plus/icons-vue';
 
-export default {
-  name: 'ImageManager',
-  props: {
-    apiBaseUrl: {
-      type: String,
-      default: '/api'
-    }
+/**
+ * 图片资源接口定义
+ */
+interface ImageResource {
+  id: string;
+  url: string;
+  name: string;
+  size: number;
+  uploadDate: Date;
+  source: 'remote' | 'local';
+}
+
+const props = defineProps({
+  /**
+   * API基础路径
+   */
+  apiBaseUrl: {
+    type: String,
+    default: '/api'
+  }
+});
+
+// === 状态变量 ===
+// 图片数组，实际应用中应从API获取
+const images = ref<ImageResource[]>([
+  {
+    id: '3',
+    url: 'https://picsum.photos/200/300?random=3',
+    name: '产品截图-1.jpg',
+    size: 786432, // 768KB
+    uploadDate: new Date('2024-02-28'),
+    source: 'remote'
   },
-  setup(props) {
-    // 状态
-    // const images = ref([]);
-    const images = ref([
-    {
-      id: '3',
-        url: 'https://picsum.photos/200/300?random=3',
-      name: '产品截图-1.jpg',
-      size: 786432, // 768KB
-      uploadDate: new Date('2024-02-28'),
-      source: 'remote'
-    },
-    {
-      id: '4',
-        url: 'https://picsum.photos/200/300?random=4',
-      name: '设计稿-v1.psd',
-      size: 5242880, // 5MB
-      uploadDate: new Date('2024-02-25'),
-      source: 'local'
-    },
-    {
-      id: '5',
-        url: 'https://picsum.photos/200/300?random=5',
-      name: '会议纪要配图.jpeg',
-      size: 3670016, // 3.5MB
-      uploadDate: new Date('2024-02-29'),
-      source: 'remote'
-    }
-  ]);
+  {
+    id: '4',
+    url: 'https://picsum.photos/200/300?random=4',
+    name: '设计稿-v1.psd',
+    size: 5242880, // 5MB
+    uploadDate: new Date('2024-02-25'),
+    source: 'local'
+  },
+  {
+    id: '5',
+    url: 'https://picsum.photos/200/300?random=5',
+    name: '会议纪要配图.jpeg',
+    size: 3670016, // 3.5MB
+    uploadDate: new Date('2024-02-29'),
+    source: 'remote'
+  }
+]);
 
+// 搜索和过滤
+const searchQuery = ref('');
+const filterType = ref('all');
+const selectedImages = ref<string[]>([]);
+const currentPage = ref(1);
+const pageSize = ref(20);
+const deleteDialogVisible = ref(false);
+const imageToDelete = ref<ImageResource | null>(null);
 
-    const searchQuery = ref('');
-    const filterType = ref('all');
-    const selectedImages = ref([]);
-    const currentPage = ref(1);
-    const pageSize = ref(20);
-    const previewVisible = ref(false);
-    const previewImageUrl = ref('');
-    const currentImage = ref(null);
-    const deleteDialogVisible = ref(false);
-    const toBeDeleted = ref(null);
-    const uploadActionUrl = computed(() => `${props.apiBaseUrl}/images/upload`);
+// 图片预览相关
+const imageViewerVisible = ref(false);
+const previewIndex = ref(0);
+const previewImageUrls = computed(() => {
+  return filteredImages.value.map(img => img.url);
+});
+const currentPreviewImage = computed(() => {
+  if (previewIndex.value >= 0 && previewIndex.value < filteredImages.value.length) {
+    return filteredImages.value[previewIndex.value];
+  }
+  return null;
+});
 
-    // 过滤后的图片
-    const filteredImages = computed(() => {
-      return images.value.filter(image => {
-        const matchesSearch = !searchQuery.value ||
-          image.name.toLowerCase().includes(searchQuery.value.toLowerCase());
-        const matchesFilter = filterType.value === 'all' ||
-          image.source === filterType.value;
+/**
+ * 上传图片的API URL
+ */
+const uploadActionUrl = computed(() => `${props.apiBaseUrl}/upload-image`);
 
-        return matchesSearch && matchesFilter;
-      });
-    });
+/**
+ * 过滤后的图片列表
+ */
+const filteredImages = computed(() => {
+  return images.value.filter(image => {
+    const matchesSearch =
+      !searchQuery.value ||
+      image.name.toLowerCase().includes(searchQuery.value.toLowerCase());
 
-    // 分页后的图片
-    const paginatedImages = computed(() => {
-      const startIndex = (currentPage.value - 1) * pageSize.value;
-      const endIndex = startIndex + pageSize.value;
-      return filteredImages.value.slice(startIndex, endIndex);
-    });
+    const matchesFilter =
+      filterType.value === 'all' ||
+      image.source === filterType.value;
 
-    // 获取图片列表
-    const fetchImages = async () => {
-      const loading = ElLoading.service({
-        target: '.image-grid-container',
-        text: '加载图片中...'
-      });
+    return matchesSearch && matchesFilter;
+  });
+});
 
-      // try {
-      //   const response = await fetch(`${props.apiBaseUrl}/images`);
-      //   if (!response.ok) throw new Error('获取图片失败');
-      //
-      //   const data = await response.json();
-      //   images.value = data.map(img => ({
-      //     ...img,
-      //     uploadDate: new Date(img.uploadDate)
-      //   }));
-      // } catch (error) {
-      //   console.error('Error fetching images:', error);
-      //   ElMessage.error('获取图片列表失败');
-      // } finally {
-      //   loading.close();
-      // }
-    };
+/**
+ * 当前页的图片列表
+ */
+const paginatedImages = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value;
+  const end = start + pageSize.value;
+  return filteredImages.value.slice(start, end);
+});
 
-    // 同步远程图床图片
-    const syncRemoteImages = async () => {
-      const loading = ElLoading.service({
-        text: '同步图床中...'
-      });
+/**
+ * 处理页码变化
+ */
+const handlePageChange = (page: number) => {
+  currentPage.value = page;
+};
 
-      try {
-        const response = await fetch(`${props.apiBaseUrl}/images/sync`, {
-          method: 'POST'
-        });
+/**
+ * 处理搜索查询
+ */
+const handleSearch = () => {
+  currentPage.value = 1;
+};
 
-        if (!response.ok) throw new Error('同步图片失败');
+/**
+ * 处理过滤选项变化
+ */
+const handleFilterChange = () => {
+  currentPage.value = 1;
+};
 
-        const data = await response.json();
-        ElMessage.success(`成功同步 ${data.syncedCount} 张图片`);
-        await fetchImages(); // 重新加载图片列表
-      } catch (error) {
-        console.error('Error syncing images:', error);
-        ElMessage.error('同步图床失败');
-      } finally {
-        loading.close();
-      }
-    };
+/**
+ * 检查图片是否被选中
+ */
+const isSelected = (id: string): boolean => {
+  return selectedImages.value.includes(id);
+};
 
-    // 处理图片上传成功
-    const handleUploadSuccess = (response) => {
-      ElMessage.success('图片上传成功');
-      fetchImages(); // 重新加载图片列表
-    };
-
-    // 处理图片上传失败
-    const handleUploadError = (error) => {
-      console.error('Upload error:', error);
-      ElMessage.error('图片上传失败');
-    };
-
-    // 处理搜索
-    const handleSearch = () => {
-      currentPage.value = 1; // 重置页码
-    };
-
-    // 处理筛选变化
-    const handleFilterChange = () => {
-      currentPage.value = 1; // 重置页码
-    };
-
-    // 处理分页变化
-    const handlePageChange = (page) => {
-      currentPage.value = page;
-    };
-
-    // 检查图片是否被选中
-    const isSelected = (id) => {
-      return selectedImages.value.includes(id);
-    };
-
-    // 切换图片选中状态
-    const toggleSelection = (id) => {
-      if (isSelected(id)) {
-        selectedImages.value = selectedImages.value.filter(imageId => imageId !== id);
-      } else {
-        selectedImages.value.push(id);
-      }
-    };
-
-    // 预览图片
-    const previewImage = (image) => {
-      currentImage.value = image;
-      previewImageUrl.value = image.url;
-      previewVisible.value = true;
-    };
-
-    // 复制图片URL
-    const copyImageUrl = (url) => {
-      navigator.clipboard.writeText(url)
-        .then(() => {
-          ElMessage.success('已复制图片链接');
-        })
-        .catch(() => {
-          ElMessage.error('复制失败');
-        });
-    };
-
-    // 确认删除单张图片
-    const confirmDelete = (image) => {
-      toBeDeleted.value = [image.id];
-      deleteDialogVisible.value = true;
-    };
-
-    // 删除选中的图片
-    const deleteSelected = () => {
-      if (selectedImages.value.length === 0) return;
-
-      toBeDeleted.value = [...selectedImages.value];
-      deleteDialogVisible.value = true;
-    };
-
-    // 确认删除操作
-    const confirmDeleteAction = async () => {
-      if (!toBeDeleted.value || toBeDeleted.value.length === 0) return;
-
-      const loading = ElLoading.service({
-        text: '删除中...'
-      });
-
-      try {
-        const response = await fetch(`${props.apiBaseUrl}/images/delete`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            ids: toBeDeleted.value
-          })
-        });
-
-        if (!response.ok) throw new Error('删除图片失败');
-
-        ElMessage.success('图片删除成功');
-        // 从选中列表中移除已删除的图片
-        selectedImages.value = selectedImages.value.filter(id => !toBeDeleted.value.includes(id));
-        await fetchImages(); // 重新加载图片列表
-      } catch (error) {
-        console.error('Error deleting images:', error);
-        ElMessage.error('删除图片失败');
-      } finally {
-        loading.close();
-        deleteDialogVisible.value = false;
-        toBeDeleted.value = null;
-      }
-    };
-
-    // 格式化文件大小
-    const formatSize = (bytes) => {
-      if (!bytes) return '未知';
-
-      const units = ['B', 'KB', 'MB', 'GB'];
-      let size = bytes;
-      let unitIndex = 0;
-
-      while (size >= 1024 && unitIndex < units.length - 1) {
-        size /= 1024;
-        unitIndex++;
-      }
-
-      return `${size.toFixed(2)} ${units[unitIndex]}`;
-    };
-
-    // 格式化日期
-    const formatDate = (date) => {
-      if (!date) return '未知';
-
-      return new Date(date).toLocaleDateString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      });
-    };
-
-    // 初始化
-    onMounted(() => {
-      // fetchImages();
-    });
-
-    return {
-      images,
-      searchQuery,
-      filterType,
-      selectedImages,
-      currentPage,
-      pageSize,
-      previewVisible,
-      previewImageUrl,
-      currentImage,
-      deleteDialogVisible,
-      uploadActionUrl,
-      filteredImages,
-      paginatedImages,
-      fetchImages,
-      syncRemoteImages,
-      handleUploadSuccess,
-      handleUploadError,
-      handleSearch,
-      handleFilterChange,
-      handlePageChange,
-      isSelected,
-      toggleSelection,
-      previewImage,
-      copyImageUrl,
-      confirmDelete,
-      deleteSelected,
-      confirmDeleteAction,
-      formatSize,
-      formatDate
-    };
+/**
+ * 切换图片选中状态
+ */
+const toggleSelection = (id: string) => {
+  const index = selectedImages.value.indexOf(id);
+  if (index === -1) {
+    selectedImages.value.push(id);
+  } else {
+    selectedImages.value.splice(index, 1);
   }
 };
+
+/**
+ * 处理图片上传成功
+ */
+const handleUploadSuccess = (response: any, file: File) => {
+  ElMessage.success(`图片 ${file.name} 上传成功`);
+  // 实际应用中，应该从响应中获取上传后的图片信息并添加到列表中
+  // getImageList(); // 刷新图片列表
+};
+
+/**
+ * 处理图片上传失败
+ */
+const handleUploadError = (error: any, file: File) => {
+  ElMessage.error(`图片 ${file.name} 上传失败: ${error}`);
+};
+
+/**
+ * 同步远程图床图片
+ */
+const syncRemoteImages = async () => {
+  try {
+    ElMessage.success('图床同步成功');
+    // 实际应用中应调用API同步远程图片
+    // await syncRemoteImagesApi();
+    // getImageList(); // 刷新图片列表
+  } catch (error) {
+    ElMessage.error('图床同步失败');
+  }
+};
+
+/**
+ * 删除选中的图片
+ */
+const deleteSelected = () => {
+  if (selectedImages.value.length === 0) return;
+
+  deleteDialogVisible.value = true;
+};
+
+/**
+ * 确认删除特定图片
+ */
+const confirmDelete = (image: ImageResource) => {
+  imageToDelete.value = image;
+  deleteDialogVisible.value = true;
+};
+
+/**
+ * 确认删除操作
+ */
+const confirmDeleteAction = async () => {
+  try {
+    if (imageToDelete.value) {
+      // 删除单个图片
+      // await deleteImageApi(imageToDelete.value.id);
+      images.value = images.value.filter(img => img.id !== imageToDelete.value?.id);
+      ElMessage.success('图片删除成功');
+    } else {
+      // 删除多个选中的图片
+      // await deleteMultipleImagesApi(selectedImages.value);
+      images.value = images.value.filter(img => !selectedImages.value.includes(img.id));
+      ElMessage.success(`已删除 ${selectedImages.value.length} 张图片`);
+      selectedImages.value = [];
+    }
+  } catch (error) {
+    ElMessage.error('删除图片失败');
+  } finally {
+    deleteDialogVisible.value = false;
+    imageToDelete.value = null;
+  }
+};
+
+/**
+ * 复制图片URL到剪贴板
+ */
+const copyImageUrl = (url: string) => {
+  navigator.clipboard.writeText(url)
+    .then(() => {
+      ElMessage.success('图片链接已复制到剪贴板');
+    })
+    .catch(() => {
+      ElMessage.error('复制失败');
+    });
+};
+
+/**
+ * 预览图片
+ */
+const previewImage = (image: ImageResource) => {
+  // 找到图片在过滤后列表中的索引
+  const index = filteredImages.value.findIndex(img => img.id === image.id);
+  if (index !== -1) {
+    previewIndex.value = index;
+    imageViewerVisible.value = true;
+  }
+};
+
+/**
+ * 关闭图片预览
+ */
+const closeImageViewer = () => {
+  imageViewerVisible.value = false;
+};
+
+/**
+ * 格式化文件大小
+ */
+const formatSize = (size: number): string => {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+};
+
+/**
+ * 格式化日期
+ */
+const formatDate = (date: Date): string => {
+  if (!date) return '未知';
+  return new Date(date).toLocaleDateString();
+};
+
+/**
+ * 获取图片列表数据
+ * 实际应用中应该从API获取
+ */
+const getImageList = async () => {
+  try {
+    // const response = await fetch(`${props.apiBaseUrl}/images`);
+    // const data = await response.json();
+    // images.value = data.images;
+    // 这里使用模拟数据，实际应用中应该从API获取
+  } catch (error) {
+    ElMessage.error('获取图片列表失败');
+  }
+};
+
+// 组件挂载时获取图片列表
+onMounted(getImageList);
 </script>
 
 <style scoped>
 .image-manager-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   padding: 20px;
+  overflow: hidden;
 }
 
 .toolbar {
@@ -459,8 +477,16 @@ export default {
 }
 
 .image-grid-container {
-  position: relative;
-  min-height: 200px;
+  flex: 1;
+  overflow-y: auto;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  padding: 20px;
+}
+
+.image-grid {
+  margin-top: 20px;
+  margin-bottom: 20px;
 }
 
 .pagination-top {
@@ -471,32 +497,31 @@ export default {
   margin-top: 20px;
 }
 
-.image-grid {
-  margin-bottom: 20px;
-}
-
 .image-card {
-  border-radius: 4px;
+  border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   margin-bottom: 20px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: transform 0.3s, box-shadow 0.3s;
+  background-color: #fff;
   position: relative;
 }
 
 .image-card:hover {
-  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.2);
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
 }
 
 .image-card.selected {
   border: 2px solid #409EFF;
+  box-shadow: 0 0 10px rgba(64, 158, 255, 0.5);
 }
 
 .image-container {
   position: relative;
-  height: 150px;
   overflow: hidden;
+  height: 180px;
 }
 
 .image-container img {
@@ -506,43 +531,43 @@ export default {
   transition: transform 0.3s;
 }
 
-.image-card:hover img {
-  transform: scale(1.05);
-}
-
 .image-overlay {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
+  align-items: center;
   opacity: 0;
   transition: opacity 0.3s;
 }
 
-.image-card:hover .image-overlay {
+.image-container:hover .image-overlay {
   opacity: 1;
+}
+
+.image-container:hover img {
+  transform: scale(1.1);
 }
 
 .actions {
   display: flex;
-  justify-content: center;
-  padding: 10px;
-  gap: 5px;
+  gap: 10px;
 }
 
 .image-type {
-  background-color: rgba(0, 0, 0, 0.6);
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: rgba(0, 0, 0, 0.7);
   color: white;
-  padding: 2px 8px;
+  padding: 3px 8px;
+  border-radius: 4px;
   font-size: 12px;
-  align-self: flex-start;
-  margin: 0 0 5px 5px;
-  border-radius: 2px;
 }
 
 .image-info {
@@ -551,10 +576,10 @@ export default {
 
 .image-name {
   font-weight: bold;
-  margin-bottom: 5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-bottom: 5px;
 }
 
 .image-meta {
@@ -562,20 +587,35 @@ export default {
   color: #909399;
 }
 
-.preview-image {
-  max-width: 100%;
-  max-height: 70vh;
-  display: block;
-  margin: 0 auto 20px;
-}
-
-.image-details {
-  padding: 0 20px;
-}
-
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
+}
+
+.image-viewer-extra {
+  position: absolute;
+  bottom: 40px;
+  left: 0;
+  right: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.image-viewer-info {
+  font-size: 14px;
+}
+
+.image-viewer-info p {
+  margin: 5px 0;
+}
+
+.image-viewer-actions {
+  display: flex;
   gap: 10px;
 }
 </style>

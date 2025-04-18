@@ -9,47 +9,27 @@ const routes: RouteRecordRaw[] = [
       order: 1001,
       title: '资源管理',
     },
-    name: 'Resource',
-    path: '/resource',
+    name: 'ResourceManagement',
+    path: '/resource-management',
     children: [
       {
         meta: {
-          title: '资源管理',
+          title: '资源列表',
           icon: Picture,
         },
-        name: 'PictureMange',
-        path: '/resource/picture',
-        component: () => import('#/views/demos/resource/picture.vue'),
+        name: 'ResourceList',
+        path: '/resource/list',
+        component: () => import('#/views/features/resource/ResourceList.vue'),
       },
       {
-        path: '/resource/netdisk',
-        name: 'NetDisk',
-        component: () => import('#/views/demos/netdisk/index.vue'),
+        path: '/disk/files',
+        name: 'DiskManager',
+        component: () => import('#/views/features/disk/DiskManager.vue'),
         meta: {
-          title: '个人网盘',
+          title: '网盘管理',
           icon: CreditCard,
         },
       },
-
-
-      // {
-      //   meta: {
-      //     title: '菜单管理',
-      //     icon: Menu
-      //   },
-      //   name: 'Menus',
-      //   path: '/menus/tree',
-      //   component: () => import('#/views/demos/menus/index.vue'),
-      // },
-      // {
-      //   meta: {
-      //     title: '标签管理',
-      //   },
-      //   name: 'TagsPage',
-      //   path: '/tags/page',
-      //   component: () => import('#/views/demos/tags/index.vue'),
-      // }
-      //
     ],
   },
 ];

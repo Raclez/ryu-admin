@@ -9,17 +9,17 @@ const routes: RouteRecordRaw[] = [
       order: 1003,
       title: '爬虫管理',
     },
-    name: 'CrawlerMange',
+    name: 'CrawlerManagement',
     path: '/crawler',
     children: [
       {
         meta: {
-          title: '图片爬虫',
+          title: '图片采集',
           icon: Picture,
         },
         name: 'PictureCrawler',
         path: '/crawler/picture',
-        component: () => import('#/views/demos/crawler/PictureCrawler.vue'),
+        component: () => import('#/views/features/crawler/PictureCrawler.vue'),
       },
     ],
   },

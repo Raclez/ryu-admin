@@ -20,7 +20,10 @@ onMounted(() => {
     series: [
       {
         barMaxWidth: 80,
-        // color: '#4f69fd',
+        color: new Array(13).fill(0).map((_, index) => {
+          const baseColor = 120 + index * 10;
+          return `rgba(${baseColor}, ${baseColor}, ${baseColor}, 0.8)`;
+        }),
         data: [
           3000, 2000, 3333, 5000, 3200, 4200, 3200, 2100, 3000, 5100, 6000,
           3200, 4800,
@@ -31,7 +34,7 @@ onMounted(() => {
     tooltip: {
       axisPointer: {
         lineStyle: {
-          // color: '#4f69fd',
+          color: '#909399',
           width: 1,
         },
       },

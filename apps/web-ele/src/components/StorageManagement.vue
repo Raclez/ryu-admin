@@ -339,10 +339,11 @@
   </el-drawer>
 </template>
 
-<script setup>
+<script lang="ts" setup>
 import { ref, computed, reactive, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus, Loading } from '@element-plus/icons-vue';
+import type {FormInstance, FormRules} from 'element-plus';
+import {Plus, Loading, Search} from '@element-plus/icons-vue';
 import {
   deleteStorageStrategy,
   getStorageStrategyPage,
@@ -350,501 +351,336 @@ import {
   updateStorageStrategy
 } from "#/api/core/storageStrategy.js";
 
+/**
+ * 测试结果接口
+ */
+interface TestResult {
+  success: boolean;
+  message: string;
+}
+
+/**
+ * 存储策略接口
+ */
+interface StoragePolicy {
+  id: string;
+  strategyName: string;
+  strategyKey: string;
+  accessUrl: string;
+  isEnable: boolean;
+  createTime: string;
+  updateTime: string;
+  status?: boolean;
+  description?: string;
+  config: {
+    [key: string]: any;
+  };
+}
+
+/**
+ * 存储策略表单数据
+ */
+interface PolicyForm {
+  id?: string;
+  strategyName: string;
+  strategyKey: string;
+  accessUrl: string;
+  isEnable: boolean;
+  status?: boolean;
+  description?: string;
+  config: {
+    // 本地存储配置
+    basePath?: string;
+
+    // 阿里云OSS配置
+    endpoint?: string;
+    bucket?: string;
+    accessKeyId?: string;
+    accessKeySecret?: string;
+
+    // 腾讯云COS配置
+    region?: string;
+    secretId?: string;
+    secretKey?: string;
+
+    // 七牛云配置
+    accessKey?: string;
+    zone?: string;
+
+    // MinIO配置
+    useSSL?: boolean;
+
+    // AWS S3配置
+    secretAccessKey?: string;
+
+    // 通用配置
+    prefix?: string;
+  };
+}
+
+// 组件属性
 const props = defineProps({
-  visible: {
+  /**
+   * 是否可见
+   */
+  modelValue: {
     type: Boolean,
     default: false
   }
 });
 
-const emit = defineEmits(['update:visible', 'update:policies']);
+// 定义事件
+const emit = defineEmits<{
+  (e: 'update:modelValue', visible: boolean): void;
+  (e: 'refresh'): void;
+}>();
 
-// 双向绑定visible属性
+// 组件可见性
 const visible = computed({
-  get: () => props.visible,
-  set: (val) => emit('update:visible', val)
+  get: () => props.modelValue,
+  set: (val) => emit('update:modelValue', val)
 });
 
-// 数据状态
+// === 状态变量 ===
+const policies = ref<StoragePolicy[]>([]);
 const loading = ref(false);
 const saving = ref(false);
-const policies = ref([]);
 const searchKeyword = ref('');
 const currentPage = ref(1);
 const pageSize = ref(10);
 const totalPolicies = ref(0);
+const policyDialogVisible = ref(false);
+const isEdit = ref(false);
+const policyFormRef = ref<FormInstance>();
+const testResultDialogVisible = ref(false);
+const testLoading = ref(false);
+const testResult = reactive<TestResult>({
+  success: false,
+  message: ''
+});
 
 // 过滤后的策略列表
 const filteredPolicies = computed(() => {
   if (!searchKeyword.value) {
     return policies.value;
   }
+
   return policies.value.filter(policy =>
     policy.strategyName.toLowerCase().includes(searchKeyword.value.toLowerCase())
   );
 });
 
-// 对话框状态
-const policyDialogVisible = ref(false);
-const testResultDialogVisible = ref(false);
-const isEdit = ref(false);
-
-// 表单相关
-const policyFormRef = ref(null);
-const policyForm = reactive({
-  id: null,
+// 策略表单初始值
+const defaultPolicyForm: PolicyForm = {
   strategyName: '',
   strategyKey: 'local',
   accessUrl: '',
-  config: {
-    // 本地存储配置
-    basePath: '',
-
-    // 对象存储通用配置
-    bucket: '',
-    prefix: '',
-
-    // 阿里云OSS配置
-    endpoint: '',
-    accessKeyId: '',
-    accessKeySecret: '',
-
-    // 腾讯云COS配置
-    region: '',
-    secretId: '',
-    secretKey: '',
-
-    // 七牛云配置
-    zone: 'z0',
-    accessKey: '',
-
-    // MinIO配置
-    useSSL: true,
-
-    // AWS S3配置
-    secretAccessKey: ''
-  },
   isEnable: false,
   status: true,
-  description: ''
-});
+  description: '',
+  config: {
+    basePath: '',
+    prefix: '',
+    zone: 'z0',
+    useSSL: true
+  }
+};
+
+// 当前编辑的策略表单
+const policyForm = reactive<PolicyForm>({...defaultPolicyForm});
 
 // 表单验证规则
-const policyRules = {
-  strategyName: [{ required: true, message: '请输入策略名称', trigger: 'blur' }],
-  strategyKey: [{ required: true, message: '请选择存储类型', trigger: 'change' }],
-  accessUrl: [{ required: true, message: '请输入访问URL前缀', trigger: 'blur' }]
-};
-
-// 测试结果
-const testLoading = ref(false);
-const testResult = reactive({
-  success: false,
-  message: ''
-});
-
-// 初始化加载数据
-onMounted(() => {
-  fetchPolicies();
-});
-
-// 监听抽屉显示状态
-watch(visible, (newVal) => {
-  if (newVal) {
-    fetchPolicies();
-  }
-});
-
-// 获取存储策略列表
-const fetchPolicies = async () => {
-  loading.value = true;
-  try {
-    // 模拟API请求
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // 示例数据
-    policies.value = [
-      {
-        id: 1,
-        strategyName: '本地存储',
-        strategyKey: 'local',
-        accessUrl: 'https://example.com/uploads/',
-        config: {
-          basePath: '/var/www/uploads/'
-        },
-        isEnable: true,
-        status: true,
-        createTime: '2025-02-25 10:00:00',
-        description: '默认本地存储策略'
-      },
-      {
-        id: 2,
-        strategyName: '阿里云OSS',
-        strategyKey: 'aliyun',
-        accessUrl: 'https://bucket.oss-cn-beijing.aliyuncs.com/',
-        config: {
-          endpoint: 'oss-cn-beijing.aliyuncs.com',
-          bucket: 'my-bucket',
-          accessKeyId: 'LTAI4*****',
-          accessKeySecret: '********',
-          prefix: 'blog/'
-        },
-        isEnable: false,
-        status: true,
-        createTime: '2025-02-25 11:30:00',
-        description: '阿里云OSS存储'
-      }
-    ];
-
-    totalPolicies.value = policies.value.length;
-    const params = {
-      currentPage: currentPage.value,
-      pageSize: pageSize.value,
-      strategyName: searchKeyword.value,
-    }
-    const res= await getStorageStrategyPage(params)
-    policies.value = res.records
-    totalPolicies.value = res.total;
-    currentPage.value = res.current;
-    pageSize.value = res.size;
-
-    emit('update:policies', policies.value);
-  } catch (error) {
-    console.error('获取存储策略失败:', error);
-    ElMessage.error('获取存储策略失败');
-  } finally {
-    loading.value = false;
-  }
-};
-
-// 搜索策略
-const searchPolicies = () => {
-  // 客户端过滤即可，无需发送请求
-};
-
-// 分页处理
-const handleSizeChange = (size) => {
-  pageSize.value = size;
-  // 实际应用中这里应该重新请求数据
-};
-
-const handleCurrentChange = (page) => {
-  currentPage.value = page;
-  // 实际应用中这里应该重新请求数据
-};
-
-// 新增策略
-const showAddPolicy = () => {
-  isEdit.value = false;
-  resetPolicyForm();
-  policyDialogVisible.value = true;
-};
-
-// 编辑策略
-const editPolicy = async (row) => {
-  isEdit.value = true;
-  resetPolicyForm();
-  // 填充表单数据
-  policyForm.id = row.id;
-  policyForm.strategyName = row.strategyName;
-  policyForm.strategyKey = row.strategyKey;
-  policyForm.accessUrl = row.accessUrl;
-  policyForm.isEnable = row.isEnable;
-  // policyForm.status = row.status;
-  policyForm.description = row.description;
-
-  // 深拷贝配置信息
-  Object.assign(policyForm.config, row.config);
-
-  policyDialogVisible.value = true;
-};
-
-// 删除策略
-const deletePolicy = async (row) => {
-  if (row.isEnable) {
-    ElMessage.warning('默认策略不能删除');
-    return;
-  }
-
-  try {
-    await ElMessageBox.confirm(
-      '确定要删除该存储策略吗？删除后使用此策略的资源将无法访问',
-      '警告',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    );
-
-    loading.value = true;
-
-
-    // 移除策略
-    const index = policies.value.findIndex(item => item.id === row.id);
-    if (index !== -1) {
-    await deleteStorageStrategy(row.id)
-      policies.value.splice(index, 1);
-      totalPolicies.value--;
-      emit('update:policies', policies.value);
-      ElMessage.success('删除成功');
-    }
-
-    // 实际应用中应调用API
-    // await fetch(`/api/storage-policies/${row.id}`, {
-    //   method: 'DELETE'
-    // });
-
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error('删除策略失败:', error);
-      ElMessage.error('删除失败');
-    }
-  } finally {
-    loading.value = false;
-  }
-};
-
-// 测试策略连接
-const testPolicy = async (policy) => {
-  testResultDialogVisible.value = true;
-  testLoading.value = true;
-  testResult.success = false;
-  testResult.message = '';
-
-  try {
-    // 模拟API请求
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // 模拟测试结果
-    if (Math.random() > 0.2) {
-      testResult.success = true;
-      testResult.message = `成功连接到${getStorageTypeName(policy.strategyKey)}服务`;
-      if (policy.strategyKey !== 'local') {
-        testResult.message += `，Bucket: ${policy.config.bucket} 可正常访问`;
-      }
-    } else {
-      testResult.success = false;
-      if (policy.strategyKey === 'local') {
-        testResult.message = '目录不存在或无写入权限';
-      } else {
-        testResult.message = '连接失败，请检查配置信息是否正确';
-      }
-    }
-
-    // 实际应用中应调用API进行测试
-    // const response = await fetch('/api/storage-policies/test', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify(policy)
-    // });
-    // const result = await response.json();
-    // testResult.success = result.success;
-    // testResult.message = result.message;
-
-  } catch (error) {
-    console.error('测试连接失败:', error);
-    testResult.success = false;
-    testResult.message = '测试过程发生错误，请重试';
-  } finally {
-    testLoading.value = false;
-  }
-};
-
-// 保存策略
-const savePolicy = async () => {
-  await policyFormRef.value.validate(async (valid) => {
-    if (!valid) return;
-
-    saving.value = true;
-
-    try {
-      // 检查是否为默认策略
-      if (policyForm.isEnable) {
-        // 将其他策略设为非默认
-        policies.value.forEach(item => {
-          if (item.id !== policyForm.id) {
-            item.isEnable = false;
-          }
-        });
-      } else if (!isEdit.value && policies.value.length === 0) {
-        // 如果是新增且没有策略，则默认设为默认策略
-        policyForm.isEnable = true;
-      }
-
-      if (isEdit.value) {
-        // 更新策略
-        const index = policies.value.findIndex(item => item.id === policyForm.id);
-        if (index !== -1) {
-          policies.value[index] = { ...policies.value[index], ...policyForm };
-        console.log('update:policies', policies.value[index]);
-          const submitData = {
-            ...policyForm,
-            config: { ...policyForm.config },
-            // 显式删除时间字段
-            createTime: undefined,
-            updateTime: undefined,
-            status: undefined
-          };
-          delete submitData.createTime;
-          delete submitData.updateTime;
-          delete submitData.status;
-
-         await updateStorageStrategy(submitData)
-          console.log(submitData,"fdfd")
+const policyRules = reactive<FormRules>({
+  strategyName: [
+    {required: true, message: '请输入策略名称', trigger: 'blur'},
+    {min: 2, max: 50, message: '长度应为 2 到 50 个字符', trigger: 'blur'}
+  ],
+  strategyKey: [
+    {required: true, message: '请选择存储类型', trigger: 'change'}
+  ],
+  accessUrl: [
+    {required: true, message: '请输入访问URL前缀', trigger: 'blur'}
+  ],
+  'config.basePath': [
+    {
+      required: true, message: '请输入存储路径', trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (policyForm.strategyKey === 'local' && !value) {
+          callback(new Error('请输入存储路径'));
+        } else {
+          callback();
         }
-        ElMessage.success('更新成功');
-      } else {
-        // 新增策略
-
-        const strategyData = {
-          strategyName: policyForm.strategyName,
-          strategyKey: policyForm.strategyKey,
-          accessUrl: policyForm.accessUrl,
-          isEnable: policyForm.isEnable,
-          // status: policyForm.status,
-          description: policyForm.description,
-          config: {}
-        };
-
-        // 根据存储类型设置不同的配置字段
-        switch (policyForm.strategyKey) {
-          case 'local':
-            strategyData.config = {
-              basePath: policyForm.config.basePath
-            };
-            break;
-          case 'aliyun':
-            strategyData.config = {
-              endpoint: policyForm.config.endpoint,
-              bucket: policyForm.config.bucket,
-              accessKeyId: policyForm.config.accessKeyId,
-              accessKeySecret: policyForm.config.accessKeySecret,
-              prefix: policyForm.config.prefix
-            };
-            break;
-          case 'tencent':
-            strategyData.config = {
-              region: policyForm.config.region,
-              bucket: policyForm.config.bucket,
-              secretId: policyForm.config.secretId,
-              secretKey: policyForm.config.secretKey,
-              prefix: policyForm.config.prefix
-            };
-            break;
-          case 'qiniu':
-            strategyData.config = {
-              zone: policyForm.config.zone,
-              bucket: policyForm.config.bucket,
-              accessKey: policyForm.config.accessKey,
-              secretKey: policyForm.config.secretKey,
-              prefix: policyForm.config.prefix
-            };
-            break;
-          case 'minio':
-            strategyData.config = {
-              endpoint: policyForm.config.endpoint,
-              bucket: policyForm.config.bucket,
-              accessKey: policyForm.config.accessKey,
-              secretKey: policyForm.config.secretKey,
-              useSSL: policyForm.config.useSSL,
-              prefix: policyForm.config.prefix
-            };
-            break;
-          case 's3':
-            strategyData.config = {
-              region: policyForm.config.region,
-              bucket: policyForm.config.bucket,
-              accessKeyId: policyForm.config.accessKeyId,
-              secretAccessKey: policyForm.config.secretAccessKey,
-              prefix: policyForm.config.prefix
-            };
-            break;
-        }
-
-        await saveStorageStrategy(strategyData)
-
-        // const newPolicy = {
-        //   ...policyForm,
-        //   id: Date.now(), // 模拟ID生成
-        //   createTime: new Date().toLocaleString()
-        // };
-        policies.value.push(strategyData);
-        totalPolicies.value++;
-        ElMessage.success('添加成功');
       }
-
-      // 更新父组件的策略列表
-      emit('update:policies', policies.value);
-
-      // 关闭对话框
-      policyDialogVisible.value = false;
-
-    } catch (error) {
-      console.error('保存策略失败:', error);
-      ElMessage.error('保存失败');
-    } finally {
-      saving.value = false;
     }
-  });
-};
+  ],
+  'config.endpoint': [
+    {
+      required: true, message: '请输入Endpoint', trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (policyForm.strategyKey === 'aliyun' && !value) {
+          callback(new Error('请输入Endpoint'));
+        } else {
+          callback();
+        }
+      }
+    }
+  ],
+  'config.bucket': [
+    {
+      required: true, message: '请输入Bucket名称', trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (['aliyun', 'tencent', 'qiniu', 'minio', 's3'].includes(policyForm.strategyKey) && !value) {
+          callback(new Error('请输入Bucket名称'));
+        } else {
+          callback();
+        }
+      }
+    }
+  ],
+  'config.accessKeyId': [
+    {
+      required: true, message: '请输入AccessKey ID', trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (policyForm.strategyKey === 'aliyun' && !value) {
+          callback(new Error('请输入AccessKey ID'));
+        } else {
+          callback();
+        }
+      }
+    }
+  ],
+  'config.accessKeySecret': [
+    {
+      required: true, message: '请输入AccessKey Secret', trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (policyForm.strategyKey === 'aliyun' && !value) {
+          callback(new Error('请输入AccessKey Secret'));
+        } else {
+          callback();
+        }
+      }
+    }
+  ],
+  'config.region': [
+    {
+      required: true, message: '请输入Region', trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (policyForm.strategyKey === 'tencent' && !value) {
+          callback(new Error('请输入Region'));
+        } else {
+          callback();
+        }
+      }
+    }
+  ],
+  'config.secretId': [
+    {
+      required: true, message: '请输入SecretId', trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (policyForm.strategyKey === 'tencent' && !value) {
+          callback(new Error('请输入SecretId'));
+        } else {
+          callback();
+        }
+      }
+    }
+  ],
+  'config.secretKey': [
+    {
+      required: true, message: '请输入SecretKey', trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (['tencent', 'qiniu'].includes(policyForm.strategyKey) && !value) {
+          callback(new Error('请输入SecretKey'));
+        } else {
+          callback();
+        }
+      }
+    }
+  ],
+  'config.accessKey': [
+    {
+      required: true, message: '请输入AccessKey', trigger: 'blur',
+      validator: (rule, value, callback) => {
+        if (policyForm.strategyKey === 'qiniu' && !value) {
+          callback(new Error('请输入AccessKey'));
+        } else {
+          callback();
+        }
+      }
+    }
+  ]
+});
 
-// 重置表单
-const resetPolicyForm = () => {
-  if (policyFormRef.value) {
-    policyFormRef.value.resetFields();
-  }
-
-  // 重置表单状态
-  policyForm.id = null;
-  policyForm.strategyName = '';
-  policyForm.strategyKey = 'local';
-  policyForm.accessUrl = '';
-  policyForm.isEnable = false;
-  policyForm.status = true;
-  policyForm.description = '';
-
-  // 重置配置信息
+/**
+ * 处理存储类型变更
+ */
+const handleTypeChange = () => {
+  // 清空特定于存储类型的配置
   policyForm.config = {
-    basePath: '',
-    bucket: '',
-    prefix: '',
-    endpoint: '',
-    accessKeyId: '',
-    accessKeySecret: '',
-    region: '',
-    secretId: '',
-    secretKey: '',
-    zone: 'z0',
-    accessKey: '',
-    useSSL: true,
-    secretAccessKey: ''
+    prefix: policyForm.config.prefix || ''
   };
+
+  // 根据存储类型添加默认配置
+  switch (policyForm.strategyKey) {
+    case 'local':
+      policyForm.config.basePath = '';
+      break;
+    case 'aliyun':
+      policyForm.config.endpoint = '';
+      policyForm.config.bucket = '';
+      policyForm.config.accessKeyId = '';
+      policyForm.config.accessKeySecret = '';
+      break;
+    case 'tencent':
+      policyForm.config.region = '';
+      policyForm.config.bucket = '';
+      policyForm.config.secretId = '';
+      policyForm.config.secretKey = '';
+      break;
+    case 'qiniu':
+      policyForm.config.bucket = '';
+      policyForm.config.accessKey = '';
+      policyForm.config.secretKey = '';
+      policyForm.config.zone = 'z0';
+      break;
+    case 'minio':
+      policyForm.config.endpoint = '';
+      policyForm.config.bucket = '';
+      policyForm.config.accessKey = '';
+      policyForm.config.secretKey = '';
+      policyForm.config.useSSL = true;
+      break;
+    case 's3':
+      policyForm.config.endpoint = '';
+      policyForm.config.bucket = '';
+      policyForm.config.accessKeyId = '';
+      policyForm.config.secretAccessKey = '';
+      policyForm.config.region = '';
+      break;
+  }
 };
 
-// 存储类型变更处理
-const handleTypeChange = (type) => {
-  // 根据存储类型重置配置
-  resetPolicyForm();
-  policyForm.strategyKey = type;
-};
-
-// 获取存储类型标签样式
-const getStorageTypeTag = (type) => {
-  const types = {
+/**
+ * 获取存储类型标签类型
+ */
+const getStorageTypeTag = (type: string): string => {
+  const tagMap: Record<string, string> = {
     local: '',
-    aliyun: 'danger',
-    tencent: 'success',
-    qiniu: 'warning',
+    aliyun: 'success',
+    tencent: 'warning',
+    qiniu: 'danger',
     minio: 'info',
     s3: 'primary'
   };
-  return types[type] || '';
+
+  return tagMap[type] || '';
 };
 
-// 获取存储类型名称
-const getStorageTypeName = (type) => {
-  const types = {
+/**
+ * 获取存储类型名称
+ */
+const getStorageTypeName = (type: string): string => {
+  const nameMap: Record<string, string> = {
     local: '本地存储',
     aliyun: '阿里云OSS',
     tencent: '腾讯云COS',
@@ -852,20 +688,205 @@ const getStorageTypeName = (type) => {
     minio: 'MinIO',
     s3: 'AWS S3'
   };
-  return types[type] || type;
+
+  return nameMap[type] || type;
 };
 
-// 格式化日期
-const formatDate = (dateStr) => {
-  if (!dateStr) return '';
-  return new Date(dateStr).toLocaleString();
+/**
+ * 格式化日期
+ */
+const formatDate = (dateStr: string): string => {
+  if (!dateStr) return '未知';
+  const date = new Date(dateStr);
+  return date.toLocaleString();
 };
 
-// 将更新后的策略列表暴露给父组件
-const updateStoragePolicies = () => {
-  emit('update:policies', policies.value);
+/**
+ * 搜索策略
+ */
+const searchPolicies = () => {
+  // 在本地过滤，已通过计算属性实现
 };
+
+/**
+ * 显示添加策略对话框
+ */
+const showAddPolicy = () => {
+  isEdit.value = false;
+  Object.assign(policyForm, defaultPolicyForm);
+  policyDialogVisible.value = true;
+};
+
+/**
+ * 编辑策略
+ */
+const editPolicy = (policy: StoragePolicy) => {
+  isEdit.value = true;
+
+  // 深拷贝策略数据到表单
+  Object.assign(policyForm, {
+    id: policy.id,
+    strategyName: policy.strategyName,
+    strategyKey: policy.strategyKey,
+    accessUrl: policy.accessUrl,
+    isEnable: policy.isEnable,
+    status: policy.status,
+    description: policy.description,
+    config: {...policy.config}
+  });
+
+  policyDialogVisible.value = true;
+};
+
+/**
+ * 删除策略
+ */
+const deletePolicy = (policy: StoragePolicy) => {
+  if (policy.isEnable) {
+    ElMessage.warning('默认策略不能删除');
+    return;
+  }
+
+  ElMessageBox.confirm(
+    '确定要删除该存储策略吗？删除后将无法恢复。',
+    '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+  ).then(async () => {
+    try {
+      await deleteStorageStrategy(policy.id);
+      ElMessage.success('删除成功');
+      fetchPolicies();
+  } catch (error) {
+      ElMessage.error('删除失败');
+    }
+  }).catch(() => {
+    // 取消操作
+  });
+};
+
+/**
+ * 测试策略
+ */
+const testPolicy = async (policy: StoragePolicy) => {
+  try {
+    testLoading.value = true;
+    testResultDialogVisible.value = true;
+
+    // 模拟API调用测试结果
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // 实际应用中应调用API
+    // const result = await testStorageStrategy(policy.id);
+
+    // 模拟测试结果
+    if (Math.random() > 0.3) {
+      testResult.success = true;
+      testResult.message = `成功连接到${getStorageTypeName(policy.strategyKey)}服务`;
+    } else {
+      testResult.success = false;
+      testResult.message = '连接失败，请检查配置信息';
+    }
+  } catch (error) {
+    testResult.success = false;
+    testResult.message = '测试过程出错';
+    ElMessage.error('测试失败');
+  } finally {
+    testLoading.value = false;
+  }
+};
+
+/**
+ * 保存策略
+ */
+const savePolicy = async () => {
+  if (!policyFormRef.value) return;
+
+  await policyFormRef.value.validate(async (valid) => {
+    if (!valid) return;
+
+    try {
+    saving.value = true;
+
+      if (isEdit.value) {
+        // 更新策略
+        await updateStorageStrategy({
+            ...policyForm,
+            createTime: undefined,
+          updateTime: undefined
+        } as any);
+        ElMessage.success('更新成功');
+      } else {
+        // 添加策略
+        await saveStorageStrategy(policyForm as any);
+        ElMessage.success('添加成功');
+      }
+
+      policyDialogVisible.value = false;
+      fetchPolicies();
+    } catch (error) {
+      ElMessage.error(isEdit.value ? '更新失败' : '添加失败');
+    } finally {
+      saving.value = false;
+    }
+  });
+};
+
+/**
+ * 处理分页大小变化
+ */
+const handleSizeChange = (val: number) => {
+  pageSize.value = val;
+  fetchPolicies();
+};
+
+/**
+ * 处理页码变化
+ */
+const handleCurrentChange = (val: number) => {
+  currentPage.value = val;
+  fetchPolicies();
+};
+
+/**
+ * 获取策略列表
+ */
+const fetchPolicies = async () => {
+  try {
+    loading.value = true;
+    const params = {
+      currentPage: currentPage.value,
+      pageSize: pageSize.value
+    };
+
+    const res = await getStorageStrategyPage(params);
+    policies.value = res.records || [];
+    totalPolicies.value = res.total || 0;
+  } catch (error) {
+    ElMessage.error('获取存储策略列表失败');
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 监听对话框可见性变化
+watch(() => visible.value, (newVal) => {
+  if (newVal) {
+    fetchPolicies();
+  }
+});
+
+// 组件挂载时获取数据
+onMounted(() => {
+  if (visible.value) {
+    fetchPolicies();
+  }
+});
 </script>
+
 <style scoped>
 /* 存储策略管理整体容器样式 */
 .storage-management-container {

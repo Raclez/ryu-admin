@@ -1,9 +1,36 @@
 <script setup lang="ts">
 import {onMounted, ref} from 'vue';
+import {ElLoading} from 'element-plus';
 
-import {getFilesGroup} from '#/api/core/resouce.js';
+// 从正确重命名的resource.ts中导入
+import {getFilesGroup, type PageParams} from '#/api/core/resource';
+
+/**
+ * 资源项接口定义
+ */
+interface ResourceItem {
+  id: string;
+  fileName: string;
+  filePath: string;
+  fileSize?: number;
+  fileType?: string;
+  createTime?: string;
+}
+
+/**
+ * 分页数据接口
+ */
+interface PaginationData {
+  records: ResourceItem[];
+  total: number;
+  size: number;
+  current: number;
+}
 
 const props = defineProps({
+  /**
+   * 文件类型
+   */
   fileType: {
     type: String,
     default: 'image',
@@ -12,21 +39,25 @@ const props = defineProps({
 
 const emit = defineEmits(['select']);
 
-// 资源列表
-const resources = ref([]);
+// 资源列表状态
+const resources = ref<ResourceItem[]>([]);
 const loading = ref(true);
 const currentPage = ref(1);
 const pageSize = ref(20);
 const totals = ref(0);
 
-// 获取图片资源
+/**
+ * 获取资源列表
+ * 根据分页参数从服务器获取资源列表数据
+ */
 const fetchResources = async () => {
   try {
-    const param = {
+    const params: PageParams = {
       currentPage: currentPage.value,
       pageSize: pageSize.value,
     };
-    const response = await getFilesGroup(param);
+
+    const response = await getFilesGroup(params) as PaginationData;
     resources.value = response.records;
     totals.value = response.total;
     currentPage.value = response.current;
@@ -35,19 +66,33 @@ const fetchResources = async () => {
     loading.value = false;
   }
 };
-const handleSizeChange = (size) => {
+
+/**
+ * 处理每页显示数量变化
+ * @param size 新的每页数量
+ */
+const handleSizeChange = (size: number) => {
   pageSize.value = size;
   fetchResources();
 };
-const handleCurrentChange = (page) => {
+
+/**
+ * 处理页码变化
+ * @param page 新的页码
+ */
+const handleCurrentChange = (page: number) => {
   currentPage.value = page;
   fetchResources();
 };
 
+// 组件挂载时获取资源
 onMounted(fetchResources);
 
-// 选择处理
-const handleSelect = (resource) => {
+/**
+ * 选择资源时触发事件
+ * @param resource 选中的资源项
+ */
+const handleSelect = (resource: ResourceItem) => {
   emit('select', resource);
 };
 </script>
@@ -68,28 +113,43 @@ const handleSelect = (resource) => {
         />
         <div class="resource-name">{{ resource.fileName }}</div>
       </div>
+
+      <!-- 空状态显示 -->
+      <div v-if="resources.length === 0 && !loading" class="empty-state">
+        暂无资源数据
+      </div>
     </div>
-  </div>
-  <div class="pagination">
-    <el-pagination
-      v-model:current-page="currentPage"
-      v-model:page-size="pageSize"
-      :page-sizes="[20, 40, 80, 100]"
-      :total="totals"
-      background
-      layout="total, sizes, prev, pager, next, jumper"
-      @size-change="handleSizeChange"
-      @current-change="handleCurrentChange"
-    />
+
+    <!-- 分页控件 -->
+    <div class="pagination">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[20, 40, 80, 100]"
+        :total="totals"
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
+    </div>
   </div>
 </template>
 
 <style scoped>
+.resource-selector {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .resource-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 16px;
   padding: 16px;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .resource-item {
@@ -97,11 +157,12 @@ const handleSelect = (resource) => {
   border-radius: 4px;
   overflow: hidden;
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .resource-item:hover {
   transform: translateY(-3px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .resource-image {
@@ -117,5 +178,20 @@ const handleSelect = (resource) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 40px;
+  color: #909399;
+  font-size: 14px;
+}
+
+.pagination {
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid #eee;
 }
 </style>

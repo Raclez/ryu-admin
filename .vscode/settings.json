@@ -1,0 +1,10 @@
+{
+  "i18n-ally.localesPaths": [
+    "packages/locales",
+    "playground/src/locales",
+    "apps/web-ele/src/locales",
+    "packages/locales/src/langs",
+    "playground/src/locales/langs",
+    "apps/web-ele/src/locales/langs"
+  ]
+}

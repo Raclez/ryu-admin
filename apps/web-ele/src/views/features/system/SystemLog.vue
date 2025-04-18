@@ -1,0 +1,2806 @@
+<script setup>
+import {computed, onMounted, onUnmounted, reactive, ref, watch} from 'vue';
+
+import {EchartsUI, useEcharts} from '@vben/plugins/echarts';
+
+import {
+  AlarmClock,
+  Clock,
+  Connection,
+  Cpu,
+  DataLine,
+  Files,
+  Memo,
+  Monitor,
+  Platform,
+  Refresh,
+  Search,
+  Stopwatch,
+  Timer,
+  ArrowDown,
+  Check,
+} from '@element-plus/icons-vue';
+
+import {
+  getAllThreads,
+  getSystemInfo,
+  getThreadStats,
+} from '#/api/core/monitor.js';
+
+// 激活的标签页
+const activeTab = ref('resource');
+
+const loading = ref(false);
+const cpuData = reactive(Array.from({length: 30}).fill(0));
+const memoryData = reactive(Array.from({length: 30}).fill(0));
+const timeData = reactive(Array.from({length: 30}).fill(''));
+
+// 图表引用
+const cpuChartRef = ref(null);
+const memoryChartRef = ref(null);
+const memoryPieRef = ref(null);
+const heapChartRef = ref(null);
+
+// 使用echarts工具
+const {renderEcharts: renderCpuChart} = useEcharts(cpuChartRef);
+const {renderEcharts: renderMemoryChart} = useEcharts(memoryChartRef);
+const {renderEcharts: renderMemoryPie} = useEcharts(memoryPieRef);
+const {renderEcharts: renderHeapChart} = useEcharts(heapChartRef);
+
+const systemInfo = ref({
+  // CPU信息
+  cpuUsage: 0,
+  cpuModel: 'Intel(R) Core(TM) i7-10700K @ 3.80GHz',
+
+  // 内存信息
+  totalMemory: 0,
+  usedMemory: 0,
+  freeMemory: 0,
+  memoryUsage: 0,
+  swapSpace: 2 * 1024 * 1024 * 1024,
+
+  // 磁盘信息
+  diskUsage: 0,
+  diskTotal: 500 * 1024 * 1024 * 1024,
+  diskFree: 250 * 1024 * 1024 * 1024,
+
+  // JVM信息
+  jvmVersion: '',
+  startTime: '',
+  uptime: '',
+  javaHome: '',
+  jvmArgs: '-Xms256m -Xmx1024m',
+  gcPolicy: 'G1 GC',
+
+  // 堆内存信息
+  heapInit: 0,
+  heapMax: 0,
+  heapUsed: 0,
+  heapUsage: 0,
+
+  // 系统信息
+  osName: '',
+  osArch: '',
+  processors: 0,
+  currentTime: '',
+  timezone: 'Asia/Shanghai (GMT+8)',
+});
+
+// 格式化字节数
+const formatBytes = (bytes) => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${Number.parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
+};
+
+// 获取进度条颜色
+const getProgressColor = (percentage) => {
+  if (percentage < 60) return '#10b981'; // 绿色
+  if (percentage < 80) return '#f59e0b'; // 黄色
+  return '#ef4444'; // 红色
+};
+
+// 更新CPU图表
+const updateCpuChart = () => {
+  // 获取当前时间
+  const now = new Date();
+  const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+  // 更新数据数组
+  cpuData.shift();
+  cpuData.push(systemInfo.value.cpuUsage);
+
+  timeData.shift();
+  timeData.push(timeStr);
+
+  renderCpuChart({
+    backgroundColor: 'transparent',
+    grid: {
+      top: 40,
+      bottom: 40,
+      left: '3%',
+      right: '4%',
+      containLabel: true,
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+        label: {
+          backgroundColor: '#0ea5e9',
+        },
+      },
+      backgroundColor: 'rgba(15, 23, 42, 0.75)',
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      textStyle: {
+        color: '#f8fafc',
+      },
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: timeData,
+      axisLabel: {
+        rotate: 45,
+        color: '#94a3b8',
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.05)',
+        },
+      },
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 100,
+      splitNumber: 5,
+      axisLabel: {
+        formatter: '{value}%',
+        color: '#94a3b8',
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.05)',
+        },
+      },
+    },
+    series: [
+      {
+        name: 'CPU使用率',
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 8,
+        showSymbol: false,
+        lineStyle: {
+          width: 4,
+          shadowColor: 'rgba(6, 182, 212, 0.5)',
+          shadowBlur: 10,
+          shadowOffsetY: 5,
+          color: '#0ea5e9', // 使用固定的蓝色替代渐变色
+        },
+        emphasis: {
+          focus: 'series',
+          scale: true,
+        },
+        itemStyle: {
+          color: '#0ea5e9',
+          borderColor: '#fff',
+          borderWidth: 2,
+          shadowColor: 'rgba(6, 182, 212, 0.5)',
+          shadowBlur: 10,
+        },
+        areaStyle: {
+          opacity: 0.5,
+          color: 'rgba(6, 182, 212, 0.3)', // 使用固定的半透明蓝色替代渐变色
+        },
+        data: cpuData,
+      },
+    ],
+  });
+};
+
+// 更新内存图表
+const updateMemoryChart = () => {
+  // 更新数据数组
+  memoryData.shift();
+  memoryData.push(systemInfo.value.memoryUsage);
+
+  renderMemoryChart({
+    backgroundColor: 'transparent',
+    grid: {
+      top: 40,
+      bottom: 40,
+      left: '3%',
+      right: '4%',
+      containLabel: true,
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+        label: {
+          backgroundColor: '#10b981',
+        },
+      },
+      backgroundColor: 'rgba(15, 23, 42, 0.75)',
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      textStyle: {
+        color: '#f8fafc',
+      },
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: timeData,
+      axisLabel: {
+        rotate: 45,
+        color: '#94a3b8',
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.05)',
+        },
+      },
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 100,
+      splitNumber: 5,
+      axisLabel: {
+        formatter: '{value}%',
+        color: '#94a3b8',
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.05)',
+        },
+      },
+    },
+    series: [
+      {
+        name: '内存使用率',
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 8,
+        showSymbol: false,
+        lineStyle: {
+          width: 4,
+          shadowColor: 'rgba(16, 185, 129, 0.5)',
+          shadowBlur: 10,
+          shadowOffsetY: 5,
+          color: '#10b981', // 使用固定的绿色替代渐变色
+        },
+        emphasis: {
+          focus: 'series',
+          scale: true,
+        },
+        itemStyle: {
+          color: '#10b981',
+          borderColor: '#fff',
+          borderWidth: 2,
+          shadowColor: 'rgba(16, 185, 129, 0.5)',
+          shadowBlur: 10,
+        },
+        areaStyle: {
+          opacity: 0.5,
+          color: 'rgba(16, 185, 129, 0.3)', // 使用固定的半透明绿色替代渐变色
+        },
+        data: memoryData,
+      },
+    ],
+  });
+};
+
+// 更新内存分配饼图
+const updateMemoryPie = () => {
+  renderMemoryPie({
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      formatter: '{a} <br/>{b}: {c} ({d}%)',
+      backgroundColor: 'rgba(15, 23, 42, 0.75)',
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      textStyle: {
+        color: '#f8fafc',
+      },
+    },
+    legend: {
+      orient: 'vertical',
+      right: 10,
+      top: 'center',
+      data: ['已用内存', '可用内存'],
+      textStyle: {
+        color: '#e2e8f0',
+      },
+      itemStyle: {
+        borderColor: '#e2e8f0',
+      },
+    },
+    series: [
+      {
+        name: '内存分配',
+        type: 'pie',
+        radius: ['55%', '75%'],
+        center: ['40%', '50%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 10,
+          borderColor: 'rgba(30, 41, 59, 0.5)',
+          borderWidth: 2,
+          shadowColor: 'rgba(0, 0, 0, 0.3)',
+          shadowBlur: 10,
+        },
+        label: {
+          show: false,
+          position: 'center',
+          color: '#f8fafc',
+        },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: '18',
+            fontWeight: 'bold',
+            color: '#f8fafc',
+          },
+          itemStyle: {
+            shadowBlur: 20,
+            shadowOffsetX: 0,
+            shadowColor: 'rgba(0, 0, 0, 0.5)',
+          },
+        },
+        labelLine: {
+          show: false,
+        },
+        data: [
+          {
+            value: systemInfo.value.usedMemory,
+            name: '已用内存',
+            itemStyle: {
+              color: '#ef4444', // 红色
+            },
+          },
+          {
+            value: systemInfo.value.freeMemory,
+            name: '可用内存',
+            itemStyle: {
+              color: '#10b981', // 绿色
+            },
+          },
+        ],
+      },
+    ],
+  });
+};
+
+// 更新堆内存图表
+const updateHeapChart = () => {
+  renderHeapChart({
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow',
+      },
+      formatter(params) {
+        return `${params[0].name}<br/>${params[0].marker}${params[0].seriesName}: ${formatBytes(params[0].value)}`;
+      },
+      backgroundColor: 'rgba(15, 23, 42, 0.75)',
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      textStyle: {
+        color: '#f8fafc',
+      },
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true,
+    },
+    xAxis: {
+      type: 'category',
+      data: ['初始堆大小', '已用堆大小', '最大堆大小'],
+      axisLabel: {
+        color: '#94a3b8',
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+      },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        formatter(value) {
+          return formatBytes(value);
+        },
+        color: '#94a3b8',
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.05)',
+        },
+      },
+    },
+    series: [
+      {
+        name: '堆内存',
+        type: 'bar',
+        barWidth: '60%',
+        data: [
+          {
+            value: systemInfo.value.heapInit,
+            itemStyle: {
+              color: '#3b82f6', // 蓝色
+              shadowColor: 'rgba(59, 130, 246, 0.5)',
+              shadowBlur: 10,
+            },
+          },
+          {
+            value: systemInfo.value.heapUsed,
+            itemStyle: {
+              color: '#ef4444', // 红色
+              shadowColor: 'rgba(239, 68, 68, 0.5)',
+              shadowBlur: 10,
+            },
+          },
+          {
+            value: systemInfo.value.heapMax,
+            itemStyle: {
+              color: '#10b981', // 绿色
+              shadowColor: 'rgba(16, 185, 129, 0.5)',
+              shadowBlur: 10,
+            },
+          },
+        ],
+      },
+    ],
+  });
+};
+
+// 刷新数据
+const refreshData = async () => {
+  loading.value = true;
+  try {
+    // 获取系统信息
+    systemInfo.value = await getSystemInfo();
+
+    // 更新图表
+    updateCpuChart();
+    updateMemoryChart();
+    updateMemoryPie();
+    updateHeapChart();
+
+    // 如果当前在线程页面，则获取线程信息
+    if (activeTab.value === 'thread') {
+      await fetchThreadStats();
+    }
+  } catch (error) {
+    console.error('获取系统信息失败:', error);
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 定时刷新
+let timer = null;
+
+onMounted(() => {
+  refreshData();
+  // 不再默认设置定时器，由用户手动开启
+});
+
+// 监听标签页切换
+watch(activeTab, (newValue) => {
+  if (newValue === 'thread') {
+    fetchThreadStats();
+  }
+});
+
+onUnmounted(() => {
+  if (timer) {
+    clearInterval(timer);
+  }
+});
+
+// 线程相关
+const threadSearchKey = ref('');
+const threadStatePieRef = ref(null);
+const threadTrendRef = ref(null);
+const {renderEcharts: renderThreadStatePie} = useEcharts(threadStatePieRef);
+const {renderEcharts: renderThreadTrend} = useEcharts(threadTrendRef);
+
+// 分页配置 - 改为前端分页
+const threadPagination = reactive({
+  currentPage: 1,
+  pageSize: 10,
+  total: 0,
+});
+
+// 自动刷新设置
+const autoRefresh = ref(false);
+const refreshInterval = ref(5); // 默认5秒
+const refreshIntervals = [5, 10, 30, 60]; // 可选刷新间隔（秒）
+
+// 线程状态统计
+const threadStats = reactive({
+  RUNNABLE: 0,
+  BLOCKED: 0,
+  WAITING: 0,
+  TIMED_WAITING: 0,
+  NEW: 0,
+  TERMINATED: 0,
+});
+
+// 线程变化趋势数据
+const threadTrendData = reactive({
+  times: [],
+  runnable: [],
+  blocked: [],
+  waiting: [],
+  timedWaiting: [],
+});
+
+// 线程列表 - 保存完整线程列表
+const allThreads = reactive([]);
+// 用于显示的线程列表
+const threads = reactive([]);
+
+// 线程堆栈弹窗
+const stacktraceVisible = ref(false);
+const currentThread = ref(null);
+
+// 最后一次刷新的时间戳
+const lastRefreshTime = ref(null);
+
+// 过滤后的线程列表 - 通过计算属性实现前端分页和过滤
+const filteredThreads = computed(() => {
+  // 首先基于搜索关键字过滤
+  const filtered = threadSearchKey.value
+    ? allThreads.filter(thread =>
+      thread.threadName.toLowerCase().includes(threadSearchKey.value.toLowerCase()) ||
+      thread.threadId.toString().includes(threadSearchKey.value))
+    : allThreads;
+
+  // 更新总数
+  threadPagination.total = filtered.length;
+
+  // 然后进行分页
+  const start = (threadPagination.currentPage - 1) * threadPagination.pageSize;
+  const end = start + threadPagination.pageSize;
+
+  return filtered.slice(start, end);
+});
+
+// 处理页码变化 - 现在只更新计算属性
+const handleCurrentChange = (val) => {
+  threadPagination.currentPage = val;
+  // 不再需要重新请求数据，filteredThreads计算属性会自动更新
+};
+
+// 处理每页条数变化 - 现在只更新计算属性
+const handleSizeChange = (val) => {
+  threadPagination.pageSize = val;
+  threadPagination.currentPage = 1; // 重置为第一页
+  // 不再需要重新请求数据，filteredThreads计算属性会自动更新
+};
+
+// 切换自动刷新
+const toggleAutoRefresh = () => {
+  if (autoRefresh.value) {
+    // 开启自动刷新
+    if (timer) clearInterval(timer);
+    timer = setInterval(refreshData, refreshInterval.value * 1000);
+  } else {
+    // 关闭自动刷新
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
+};
+
+// 更改刷新间隔
+const changeRefreshInterval = () => {
+  if (autoRefresh.value && timer) {
+    clearInterval(timer);
+    timer = setInterval(refreshData, refreshInterval.value * 1000);
+  }
+};
+
+// 获取线程状态名称
+const getThreadStateName = (state) => {
+  const names = {
+    RUNNABLE: '运行中',
+    BLOCKED: '阻塞',
+    WAITING: '等待',
+    TIMED_WAITING: '计时等待',
+    NEW: '新建',
+    TERMINATED: '终止',
+  };
+  return names[state] || state;
+};
+
+// 获取线程状态对应的Tag类型
+const getThreadStateType = (state) => {
+  const types = {
+    RUNNABLE: 'success',
+    BLOCKED: 'danger',
+    WAITING: 'warning',
+    TIMED_WAITING: 'info',
+    NEW: '',
+    TERMINATED: 'info',
+  };
+  return types[state] || '';
+};
+
+// 显示线程堆栈
+const showThreadStacktrace = (thread) => {
+  // 确保stackTrace是字符串，如果是数组则转换为字符串
+  if (thread.stackTrace && Array.isArray(thread.stackTrace)) {
+    thread.stackTraceText = thread.stackTrace.join('\n');
+  }
+
+  currentThread.value = {
+    ...thread,
+    name: thread.threadName,
+    state: thread.threadState,
+    id: thread.threadId,
+    priority: thread.priority,
+    // 格式化CPU时间为可读格式，将纳秒转换为时分秒
+    cpuTime: thread.cpuTime ? formatNanoTime(thread.cpuTime) : '00:00:00',
+    stackTrace: thread.stackTraceText || thread.stackTrace || '无堆栈信息',
+  };
+
+  stacktraceVisible.value = true;
+};
+
+// 格式化纳秒时间为时:分:秒格式
+const formatNanoTime = (nanos) => {
+  if (!nanos) return '00:00:00';
+
+  // 纳秒转换为秒
+  const totalSeconds = Math.floor(nanos / 1_000_000_000);
+
+  // 计算时分秒
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  // 格式化为 HH:MM:SS
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
+
+// 获取线程统计
+const fetchThreadStats = async () => {
+  loading.value = true;
+  try {
+    // 获取线程统计信息
+    const statsData = await getThreadStats();
+
+    // 更新线程状态统计（接口返回的是threadStateCount对象）
+    threadStats.RUNNABLE = statsData.threadStateCount?.RUNNABLE || 0;
+    threadStats.BLOCKED = statsData.threadStateCount?.BLOCKED || 0;
+    threadStats.WAITING = statsData.threadStateCount?.WAITING || 0;
+    threadStats.TIMED_WAITING = statsData.threadStateCount?.TIMED_WAITING || 0;
+    threadStats.NEW = statsData.threadStateCount?.NEW || 0;
+    threadStats.TERMINATED = statsData.threadStateCount?.TERMINATED || 0;
+
+    // 获取所有线程数据作为快照
+    await fetchAllThreads();
+
+    // 更新时间序列数据
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+    lastRefreshTime.value = timeStr;
+
+    threadTrendData.times.push(timeStr);
+    if (threadTrendData.times.length > 10) {
+      threadTrendData.times.shift();
+    }
+
+    threadTrendData.runnable.push(threadStats.RUNNABLE);
+    threadTrendData.blocked.push(threadStats.BLOCKED);
+    threadTrendData.waiting.push(threadStats.WAITING);
+    threadTrendData.timedWaiting.push(threadStats.TIMED_WAITING);
+
+    if (threadTrendData.runnable.length > 10) {
+      threadTrendData.runnable.shift();
+      threadTrendData.blocked.shift();
+      threadTrendData.waiting.shift();
+      threadTrendData.timedWaiting.shift();
+    }
+
+    // 更新饼图和趋势图
+    updateThreadStatePie();
+    updateThreadTrend();
+  } catch (error) {
+    console.error('获取线程信息失败:', error);
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 获取所有线程数据
+const fetchAllThreads = async () => {
+  try {
+    // 直接获取所有线程
+    const result = await getAllThreads();
+
+    // 更新完整线程列表
+    allThreads.splice(0, allThreads.length, ...result);
+    threadPagination.total = result.length;
+
+    // 第一页数据
+    updateDisplayThreads();
+  } catch (error) {
+    console.error('获取所有线程数据失败:', error);
+  }
+};
+
+// 更新显示的线程列表
+const updateDisplayThreads = () => {
+  // threads列表直接使用filteredThreads的结果
+  threads.splice(0, threads.length, ...filteredThreads.value);
+};
+
+// 监听分页变化和搜索关键字变化，更新显示的线程列表
+watch([
+  () => threadPagination.currentPage,
+  () => threadPagination.pageSize,
+  () => filteredThreads.value
+], () => {
+  updateDisplayThreads();
+});
+
+// 监听线程搜索关键字变化，重置为第一页
+watch(threadSearchKey, () => {
+  threadPagination.currentPage = 1;
+});
+
+// 更新线程状态饼图
+const updateThreadStatePie = () => {
+  const colorMap = {
+    RUNNABLE: '#22c55e', // 绿色
+    BLOCKED: '#ef4444', // 红色
+    WAITING: '#f97316', // 橙色
+    TIMED_WAITING: '#3b82f6', // 蓝色
+    NEW: '#94a3b8', // 浅灰色
+    TERMINATED: '#8b5cf6', // 灰色
+    UNKNOWN: '#6b7280', // 深灰色
+  };
+
+  const echartOptions = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      formatter: '{a} <br/>{b}: {c} ({d}%)',
+      backgroundColor: 'rgba(15, 23, 42, 0.75)',
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      textStyle: {
+        color: '#f8fafc',
+      },
+    },
+    legend: {
+      orient: 'vertical',
+      right: 10,
+      top: 'center',
+      data: ['运行中', '阻塞', '等待', '计时等待', '新建', '终止'],
+      textStyle: {
+        color: '#e2e8f0',
+      },
+      itemStyle: {
+        borderColor: '#e2e8f0',
+      },
+    },
+    series: [
+      {
+        name: '线程状态',
+        type: 'pie',
+        radius: ['50%', '70%'],
+        center: ['40%', '50%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 10,
+          borderColor: 'rgba(30, 41, 59, 0.5)',
+          borderWidth: 2,
+          shadowColor: 'rgba(0, 0, 0, 0.3)',
+          shadowBlur: 10,
+        },
+        label: {
+          show: false,
+          position: 'center',
+          color: '#f8fafc',
+        },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: '18',
+            fontWeight: 'bold',
+            color: '#f8fafc',
+          },
+          itemStyle: {
+            shadowBlur: 20,
+            shadowOffsetX: 0,
+            shadowColor: 'rgba(0, 0, 0, 0.5)',
+          },
+        },
+        labelLine: {
+          show: false,
+        },
+        data: [
+          {
+            value: threadStats.RUNNABLE,
+            name: '运行中',
+            itemStyle: {
+              color: colorMap.RUNNABLE,
+            },
+          },
+          {
+            value: threadStats.BLOCKED,
+            name: '阻塞',
+            itemStyle: {
+              color: colorMap.BLOCKED,
+            },
+          },
+          {
+            value: threadStats.WAITING,
+            name: '等待',
+            itemStyle: {
+              color: colorMap.WAITING,
+            },
+          },
+          {
+            value: threadStats.TIMED_WAITING,
+            name: '计时等待',
+            itemStyle: {
+              color: colorMap.TIMED_WAITING,
+            },
+          },
+          {
+            value: threadStats.NEW,
+            name: '新建',
+            itemStyle: {
+              color: colorMap.NEW,
+            },
+          },
+          {
+            value: threadStats.TERMINATED,
+            name: '终止',
+            itemStyle: {
+              color: colorMap.TERMINATED,
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  renderThreadStatePie(echartOptions);
+};
+
+// 更新线程趋势图
+const updateThreadTrend = () => {
+  renderThreadTrend({
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+        label: {
+          backgroundColor: '#0ea5e9',
+        },
+      },
+      backgroundColor: 'rgba(15, 23, 42, 0.75)',
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      textStyle: {
+        color: '#f8fafc',
+      },
+    },
+    legend: {
+      data: ['运行中', '阻塞', '等待', '计时等待'],
+      textStyle: {
+        color: '#e2e8f0',
+      },
+      top: 10,
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      top: 50,
+      containLabel: true,
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: threadTrendData.times,
+      axisLabel: {
+        color: '#94a3b8',
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.05)',
+        },
+      },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        color: '#94a3b8',
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(255, 255, 255, 0.05)',
+        },
+      },
+    },
+    series: [
+      {
+        name: '运行中',
+        type: 'line',
+        stack: 'Total',
+        smooth: true,
+        emphasis: {
+          focus: 'series',
+        },
+        data: threadTrendData.runnable,
+        lineStyle: {
+          width: 3,
+          shadowColor: 'rgba(34, 197, 94, 0.3)',
+          shadowBlur: 10,
+        },
+        areaStyle: {
+          color: 'rgba(34, 197, 94, 0.2)', // 简化为固定颜色
+        },
+        itemStyle: {color: '#22c55e'},
+      },
+      {
+        name: '阻塞',
+        type: 'line',
+        stack: 'Total',
+        smooth: true,
+        emphasis: {
+          focus: 'series',
+        },
+        data: threadTrendData.blocked,
+        lineStyle: {
+          width: 3,
+          shadowColor: 'rgba(239, 68, 68, 0.3)',
+          shadowBlur: 10,
+        },
+        areaStyle: {
+          color: 'rgba(239, 68, 68, 0.2)', // 简化为固定颜色
+        },
+        itemStyle: {color: '#ef4444'},
+      },
+      {
+        name: '等待',
+        type: 'line',
+        stack: 'Total',
+        smooth: true,
+        emphasis: {
+          focus: 'series',
+        },
+        data: threadTrendData.waiting,
+        lineStyle: {
+          width: 3,
+          shadowColor: 'rgba(249, 115, 22, 0.3)',
+          shadowBlur: 10,
+        },
+        areaStyle: {
+          color: 'rgba(249, 115, 22, 0.2)', // 简化为固定颜色
+        },
+        itemStyle: {color: '#f97316'},
+      },
+      {
+        name: '计时等待',
+        type: 'line',
+        stack: 'Total',
+        smooth: true,
+        emphasis: {
+          focus: 'series',
+        },
+        data: threadTrendData.timedWaiting,
+        lineStyle: {
+          width: 3,
+          shadowColor: 'rgba(59, 130, 246, 0.3)',
+          shadowBlur: 10,
+        },
+        areaStyle: {
+          color: 'rgba(59, 130, 246, 0.2)', // 简化为固定颜色
+        },
+        itemStyle: {color: '#3b82f6'},
+      },
+    ],
+  });
+};
+
+// 设置刷新模式
+const setRefreshMode = (isAuto, interval) => {
+  autoRefresh.value = isAuto;
+  if (isAuto) {
+    refreshInterval.value = interval;
+    toggleAutoRefresh();
+  }
+};
+
+</script>
+
+<template>
+  <div class="system-monitor">
+    <div class="monitor-header glassmorphism animated-glow">
+      <h2 class="monitor-title">系统监控中心</h2>
+      <div class="header-actions">
+        <el-button
+          :icon="Refresh"
+          :loading="loading"
+          circle
+          class="apple-button"
+          type="primary"
+          @click="refreshData"
+        />
+      </div>
+    </div>
+
+    <!-- 功能切换 -->
+    <el-tabs
+      v-model="activeTab"
+      class="monitor-tabs apple-tabs"
+      type="border-card"
+    >
+      <el-tab-pane label="资源监控" name="resource">
+        <!-- 系统概览卡片 -->
+        <el-row :gutter="24">
+          <el-col :sm="12" :span="6" :xs="24">
+            <div class="stat-card glassmorphism animated-glow">
+              <div class="stat-icon">
+                <el-icon>
+                  <Cpu/>
+                </el-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value">{{ systemInfo.cpuUsage }}%</div>
+                <div class="stat-label">CPU使用率</div>
+              </div>
+              <div class="stat-progress">
+                <el-progress
+                  :color="getProgressColor(systemInfo.cpuUsage)"
+                  :percentage="systemInfo.cpuUsage"
+                  :show-text="false"
+                  :stroke-width="4"
+                  class="apple-progress"
+                />
+              </div>
+            </div>
+          </el-col>
+          <el-col :sm="12" :span="6" :xs="24">
+            <div class="stat-card glassmorphism animated-glow">
+              <div class="stat-icon">
+                <el-icon>
+                  <Memo/>
+                </el-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value">{{ systemInfo.memoryUsage }}%</div>
+                <div class="stat-label">内存使用率</div>
+              </div>
+              <div class="stat-progress">
+                <el-progress
+                  :color="getProgressColor(systemInfo.memoryUsage)"
+                  :percentage="systemInfo.memoryUsage"
+                  :show-text="false"
+                  :stroke-width="4"
+                  class="apple-progress"
+                />
+              </div>
+            </div>
+          </el-col>
+          <el-col :sm="12" :span="6" :xs="24">
+            <div class="stat-card glassmorphism animated-glow">
+              <div class="stat-icon">
+                <el-icon>
+                  <Files/>
+                </el-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value">{{ systemInfo.diskUsage }}%</div>
+                <div class="stat-label">磁盘使用率</div>
+              </div>
+              <div class="stat-progress">
+                <el-progress
+                  :color="getProgressColor(systemInfo.diskUsage)"
+                  :percentage="systemInfo.diskUsage"
+                  :show-text="false"
+                  :stroke-width="4"
+                  class="apple-progress"
+                />
+              </div>
+            </div>
+          </el-col>
+          <el-col :sm="12" :span="6" :xs="24">
+            <div class="stat-card glassmorphism animated-glow">
+              <div class="stat-icon">
+                <el-icon>
+                  <DataLine/>
+                </el-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value">{{ systemInfo.heapUsage }}%</div>
+                <div class="stat-label">堆内存使用率</div>
+              </div>
+              <div class="stat-progress">
+                <el-progress
+                  :color="getProgressColor(systemInfo.heapUsage)"
+                  :percentage="systemInfo.heapUsage"
+                  :show-text="false"
+                  :stroke-width="4"
+                  class="apple-progress"
+                />
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+
+        <!-- 图表区域 -->
+        <el-row :gutter="24" class="chart-row">
+          <!-- CPU使用率趋势图 -->
+          <el-col :span="12" :xs="24">
+            <el-card class="chart-card glassmorphism" shadow="hover">
+              <template #header>
+                <div class="card-header">
+                  <span>CPU使用率趋势</span>
+                </div>
+              </template>
+              <EchartsUI ref="cpuChartRef" height="300px"/>
+            </el-card>
+          </el-col>
+
+          <!-- 内存使用率趋势图 -->
+          <el-col :span="12" :xs="24">
+            <el-card class="chart-card glassmorphism" shadow="hover">
+              <template #header>
+                <div class="card-header">
+                  <span>内存使用率趋势</span>
+                </div>
+              </template>
+              <EchartsUI ref="memoryChartRef" height="300px"/>
+            </el-card>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="24" class="chart-row">
+          <!-- 内存分配详情 -->
+          <el-col :span="12" :xs="24">
+            <el-card class="chart-card glassmorphism" shadow="hover">
+              <template #header>
+                <div class="card-header">
+                  <span>内存分配详情</span>
+                </div>
+              </template>
+              <div class="memory-distribution-container">
+                <div class="memory-chart-wrapper">
+                  <EchartsUI ref="memoryPieRef" height="300px"/>
+                </div>
+                <div class="memory-stats">
+                  <div class="memory-stat-item memory-stat-used">
+                    <div class="memory-stat-value">
+                      {{ formatBytes(systemInfo.usedMemory) }}
+                    </div>
+                    <div class="memory-stat-label">已用内存</div>
+                  </div>
+                  <div class="memory-stat-item memory-stat-free">
+                    <div class="memory-stat-value">
+                      {{ formatBytes(systemInfo.freeMemory) }}
+                    </div>
+                    <div class="memory-stat-label">可用内存</div>
+                  </div>
+                  <div class="memory-stat-item memory-stat-total">
+                    <div class="memory-stat-value">
+                      {{ formatBytes(systemInfo.totalMemory) }}
+                    </div>
+                    <div class="memory-stat-label">总内存</div>
+                  </div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+
+          <!-- JVM信息 -->
+          <el-col :span="12" :xs="24">
+            <div class="jvm-info-card">
+              <div class="jvm-info-header">
+                <h3>
+                  <el-icon>
+                    <Connection/>
+                  </el-icon>
+                  JVM信息
+                </h3>
+              </div>
+              <div class="jvm-info-content">
+                <div class="jvm-info-item">
+                  <div class="jvm-info-label">JVM版本</div>
+                  <div class="jvm-info-value">{{ systemInfo.jvmVersion }}</div>
+                </div>
+                <div class="jvm-info-item">
+                  <div class="jvm-info-label">安装路径</div>
+                  <div class="jvm-info-value">{{ systemInfo.javaHome }}</div>
+                </div>
+                <div class="jvm-info-item">
+                  <div class="jvm-info-label">JVM参数</div>
+                  <div class="jvm-info-value">
+                    {{ systemInfo.jvmArgs || '-Xms256m -Xmx1024m' }}
+                  </div>
+                </div>
+                <div class="jvm-info-item">
+                  <div class="jvm-info-label">GC策略</div>
+                  <div class="jvm-info-value">
+                    {{ systemInfo.gcPolicy || 'G1 GC' }}
+                  </div>
+                </div>
+                <div class="jvm-info-item">
+                  <div class="jvm-info-label">启动时间</div>
+                  <div class="jvm-info-value">{{ systemInfo.startTime }}</div>
+                </div>
+                <div class="jvm-info-item">
+                  <div class="jvm-info-label">运行时长</div>
+                  <div class="jvm-info-value">{{ systemInfo.uptime }}</div>
+                </div>
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="24" class="chart-row">
+          <!-- 3D堆内存详情 -->
+          <el-col :span="24">
+            <el-card class="chart-card glassmorphism" shadow="hover">
+              <template #header>
+                <div class="card-header">
+                  <span>堆内存详情</span>
+                </div>
+              </template>
+              <div style="display: flex">
+                <div style="flex: 3">
+                  <EchartsUI ref="heapChartRef" height="300px"/>
+                </div>
+                <div style="flex: 2">
+                  <div
+                    :style="{
+                      '--heap-init-percent':
+                        systemInfo.heapInit / systemInfo.heapMax,
+                      '--heap-used-percent':
+                        systemInfo.heapUsed / systemInfo.heapMax,
+                      '--heap-max-percent': 1,
+                    }"
+                    class="heap-visualization"
+                  >
+                    <div class="heap-visualization-container">
+                      <div class="heap-grid"></div>
+                      <div class="heap-bar heap-bar-init">
+                        初始
+                        <div class="heap-bar-label">
+                          {{ formatBytes(systemInfo.heapInit) }}
+                        </div>
+                      </div>
+                      <div class="heap-bar heap-bar-used">
+                        已用
+                        <div class="heap-bar-label">
+                          {{ formatBytes(systemInfo.heapUsed) }}
+                        </div>
+                      </div>
+                      <div class="heap-bar heap-bar-max">
+                        最大
+                        <div class="heap-bar-label">
+                          {{ formatBytes(systemInfo.heapMax) }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+
+        <!-- 系统信息 -->
+        <el-row :gutter="24" class="chart-row">
+          <el-col :span="24">
+            <el-card class="info-card glassmorphism" shadow="hover">
+              <template #header>
+                <div class="card-header">
+                  <span>系统信息</span>
+                </div>
+              </template>
+              <div class="system-info-container">
+                <el-row :gutter="24">
+                  <el-col :md="8" :sm="12" :xs="24">
+                    <div class="sys-section">
+                      <div class="sys-section-title">
+                        <el-icon>
+                          <Monitor/>
+                        </el-icon>
+                        <span>基本信息</span>
+                      </div>
+                      <div class="sys-info-grid">
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon">
+                            <el-icon>
+                              <Platform/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">操作系统</div>
+                            <div class="sys-info-value">
+                              {{ systemInfo.osName }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon">
+                            <el-icon>
+                              <Cpu/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">系统架构</div>
+                            <div class="sys-info-value">
+                              {{ systemInfo.osArch }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon">
+                            <el-icon>
+                              <Cpu/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">CPU核心数</div>
+                            <div class="sys-info-value">
+                              {{ systemInfo.processors }} 核
+                            </div>
+                          </div>
+                        </div>
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon">
+                            <el-icon>
+                              <Cpu/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">CPU型号</div>
+                            <div class="sys-info-value">
+                              {{
+                                systemInfo.cpuModel ||
+                                'Intel(R) Core(TM) i7-10700K'
+                              }}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </el-col>
+
+                  <el-col :md="8" :sm="12" :xs="24">
+                    <div class="sys-section">
+                      <div class="sys-section-title">
+                        <el-icon>
+                          <Timer/>
+                        </el-icon>
+                        <span>时间信息</span>
+                      </div>
+                      <div class="sys-info-grid">
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon time-icon">
+                            <el-icon>
+                              <Clock/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">系统时间</div>
+                            <div class="sys-info-value">
+                              {{ systemInfo.currentTime }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon start-time-icon">
+                            <el-icon>
+                              <AlarmClock/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">启动时间</div>
+                            <div class="sys-info-value">
+                              {{ systemInfo.startTime }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon uptime-icon">
+                            <el-icon>
+                              <Stopwatch/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">运行时长</div>
+                            <div class="sys-info-value">
+                              {{ systemInfo.uptime }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon timezone-icon">
+                            <el-icon>
+                              <Clock/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">时区</div>
+                            <div class="sys-info-value">
+                              {{
+                                systemInfo.timezone || 'Asia/Shanghai (GMT+8)'
+                              }}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </el-col>
+
+                  <el-col :md="8" :sm="12" :xs="24">
+                    <div class="sys-section">
+                      <div class="sys-section-title">
+                        <el-icon>
+                          <Files/>
+                        </el-icon>
+                        <span>磁盘信息</span>
+                      </div>
+                      <div class="sys-info-grid">
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon disk-icon">
+                            <el-icon>
+                              <Files/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">总容量</div>
+                            <div class="sys-info-value">
+                              {{ formatBytes(systemInfo.diskTotal) }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon disk-used-icon">
+                            <el-icon>
+                              <Files/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">已用空间</div>
+                            <div class="sys-info-value">
+                              {{
+                                formatBytes(
+                                  systemInfo.diskTotal - systemInfo.diskFree,
+                                )
+                              }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon disk-free-icon">
+                            <el-icon>
+                              <Files/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">可用空间</div>
+                            <div class="sys-info-value">
+                              {{ formatBytes(systemInfo.diskFree) }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="sys-info-item">
+                          <div class="sys-info-icon disk-usage-icon">
+                            <el-icon>
+                              <DataLine/>
+                            </el-icon>
+                          </div>
+                          <div class="sys-info-content">
+                            <div class="sys-info-label">使用率</div>
+                            <div class="sys-info-value">
+                              {{ systemInfo.diskUsage }}%
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </el-col>
+                </el-row>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+      </el-tab-pane>
+
+      <el-tab-pane label="JVM线程" name="thread">
+        <div class="thread-monitor">
+          <!-- 线程信息页面标题 -->
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-white">
+              线程信息
+              <el-tag v-if="lastRefreshTime" class="ml-2" size="small" type="info">
+                最后刷新: {{ lastRefreshTime }}
+              </el-tag>
+            </h2>
+            <div class="thread-control-panel">
+              <el-button
+                :loading="loading"
+                class="refresh-btn"
+                type="primary"
+                @click="fetchThreadStats"
+              >
+                <el-icon>
+                  <Refresh/>
+                </el-icon>
+                刷新数据
+              </el-button>
+
+              <el-dropdown class="ml-2" trigger="click">
+                <el-button type="info">
+                  <span>{{
+                      autoRefresh ? '自动刷新: ' + refreshInterval + '秒' : '手动刷新'
+                    }}</span>
+                  <el-icon class="el-icon--right">
+                    <arrow-down/>
+                  </el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click="setRefreshMode(false)">
+                      <el-icon v-if="!autoRefresh">
+                        <Check/>
+                      </el-icon>
+                      <span :class="{'font-bold': !autoRefresh}">手动刷新</span>
+                    </el-dropdown-item>
+                    <el-dropdown-item divided></el-dropdown-item>
+                    <el-dropdown-item disabled>自动刷新间隔</el-dropdown-item>
+                    <el-dropdown-item
+                      v-for="interval in refreshIntervals"
+                      :key="interval"
+                      @click="setRefreshMode(true, interval)"
+                    >
+                      <el-icon v-if="autoRefresh && refreshInterval === interval">
+                        <Check/>
+                      </el-icon>
+                      <span :class="{'font-bold': autoRefresh && refreshInterval === interval}">{{
+                          interval
+                        }}秒</span>
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </div>
+          <el-row :gutter="24" class="mb-6">
+            <el-col :span="24">
+              <div class="glassmorphism rounded-lg p-4">
+                <h3 class="mb-4 text-lg font-bold text-white">线程状态统计</h3>
+                <el-row :gutter="24">
+                  <el-col :span="8">
+                    <div
+                      class="thread-stat-card rounded-lg bg-blue-500 bg-opacity-20 p-4"
+                    >
+                      <div class="text-center">
+                        <div class="text-2xl font-bold text-blue-400">
+                          {{ threadStats.RUNNABLE }}
+                        </div>
+                        <div class="text-sm text-gray-300">运行中线程</div>
+                      </div>
+                    </div>
+                  </el-col>
+                  <el-col :span="8">
+                    <div
+                      class="thread-stat-card rounded-lg bg-red-500 bg-opacity-20 p-4"
+                    >
+                      <div class="text-center">
+                        <div class="text-2xl font-bold text-red-400">
+                          {{ threadStats.BLOCKED }}
+                        </div>
+                        <div class="text-sm text-gray-300">阻塞线程</div>
+                      </div>
+                    </div>
+                  </el-col>
+                  <el-col :span="8">
+                    <div
+                      class="thread-stat-card rounded-lg bg-orange-500 bg-opacity-20 p-4"
+                    >
+                      <div class="text-center">
+                        <div class="text-2xl font-bold text-orange-400">
+                          {{ threadStats.WAITING + threadStats.TIMED_WAITING }}
+                        </div>
+                        <div class="text-sm text-gray-300">等待线程</div>
+                      </div>
+                    </div>
+                  </el-col>
+                </el-row>
+              </div>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="24" class="chart-row">
+            <el-col :span="12">
+              <el-card class="chart-card glassmorphism" shadow="hover">
+                <template #header>
+                  <div class="card-header">
+                    <span>线程状态分布</span>
+                  </div>
+                </template>
+                <EchartsUI ref="threadStatePieRef" height="300px"/>
+              </el-card>
+            </el-col>
+            <el-col :span="12">
+              <el-card class="chart-card glassmorphism" shadow="hover">
+                <template #header>
+                  <div class="card-header">
+                    <span>线程数变化趋势</span>
+                  </div>
+                </template>
+                <EchartsUI ref="threadTrendRef" height="300px"/>
+              </el-card>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="24">
+            <el-col :span="24">
+              <el-card class="thread-details-card glassmorphism" shadow="hover">
+                <template #header>
+                  <div class="card-header">
+                    <span>线程详情 (共 {{ threadPagination.total }} 个线程)</span>
+                    <div class="header-actions">
+                      <div class="search-box">
+                        <el-input
+                          v-model="threadSearchKey"
+                          class="search-input"
+                          clearable
+                          placeholder="搜索线程名称或ID..."
+                        >
+                          <template #prefix>
+                            <el-icon>
+                              <Search/>
+                            </el-icon>
+                          </template>
+                        </el-input>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <el-table
+                  v-loading="loading"
+                  :data="filteredThreads"
+                  class="glassmorphism"
+                  highlight-current-row
+                  max-height="500"
+                  style="width: 100%"
+                  @row-click="showThreadStacktrace"
+                >
+                  <el-table-column label="线程ID" prop="threadId" width="80"/>
+                  <el-table-column
+                    label="线程名称"
+                    min-width="200"
+                    prop="threadName"
+                  />
+                  <el-table-column label="线程状态" width="120">
+                    <template #default="scope">
+                      <el-tag :type="getThreadStateType(scope.row.threadState)">
+                        {{ getThreadStateName(scope.row.threadState) }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="优先级" prop="priority" width="80"/>
+                  <el-table-column label="类型" width="100">
+                    <template #default="scope">
+                      <el-tag v-if="scope.row.daemon" type="info">
+                        守护线程
+                      </el-tag>
+                      <el-tag v-else>用户线程</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="CPU时间" width="120">
+                    <template #default="scope">
+                      {{
+                        scope.row.cpuTime
+                          ? formatNanoTime(scope.row.cpuTime)
+                          : '未知'
+                      }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="120">
+                    <template #default="scope">
+                      <el-button
+                        size="small"
+                        type="primary"
+                        @click.stop="showThreadStacktrace(scope.row)"
+                      >
+                        查看堆栈
+                      </el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+                <div class="pagination-container mt-4 flex justify-end">
+                  <el-pagination
+                    v-model:current-page="threadPagination.currentPage"
+                    v-model:page-size="threadPagination.pageSize"
+                    :page-sizes="[10, 20, 50, 100]"
+                    :total="threadPagination.total"
+                    background
+                    layout="total, sizes, prev, pager, next, jumper"
+                    @current-change="handleCurrentChange"
+                    @size-change="handleSizeChange"
+                  />
+                </div>
+              </el-card>
+            </el-col>
+          </el-row>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
+
+    <!-- 线程堆栈弹窗 -->
+    <el-dialog
+      v-model="stacktraceVisible"
+      :title="`线程详情: ${currentThread?.name || currentThread?.threadName || ''}`"
+      class="thread-dialog"
+      width="80%"
+    >
+      <el-descriptions :column="2" border title="线程信息">
+        <el-descriptions-item label="线程ID">
+          {{ currentThread?.id || currentThread?.threadId }}
+        </el-descriptions-item>
+        <el-descriptions-item label="线程名称">
+          {{ currentThread?.name || currentThread?.threadName }}
+        </el-descriptions-item>
+        <el-descriptions-item label="线程状态">
+          {{
+            getThreadStateName(
+              currentThread?.state || currentThread?.threadState,
+            )
+          }}
+        </el-descriptions-item>
+        <el-descriptions-item label="优先级">
+          {{ currentThread?.priority }}
+        </el-descriptions-item>
+        <el-descriptions-item label="线程类型">
+          {{ currentThread?.daemon ? '守护线程' : '用户线程' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="CPU时间">
+          {{ currentThread?.cpuTime || '未知' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="线程组">
+          {{ currentThread?.threadGroupName || '未知' }}
+        </el-descriptions-item>
+      </el-descriptions>
+
+      <div class="my-4">
+        <h3 class="mb-2 text-xl font-bold">堆栈跟踪</h3>
+        <el-input
+          :model-value="currentThread?.stackTrace"
+          :rows="15"
+          class="monospace-font"
+          readonly
+          type="textarea"
+        />
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end">
+          <el-button @click="stacktraceVisible = false">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<style scoped>
+/* 基础样式 */
+.system-monitor {
+  padding: 24px;
+  background-color: #0f172a;
+  background-image: radial-gradient(
+    circle at 50% 50%,
+    #1e293b 0%,
+    #0f172a 100%
+  );
+  min-height: 100vh;
+  color: #e2e8f0;
+}
+
+/* 炫酷卡片效果 */
+.glassmorphism {
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.monitor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding: 24px;
+  border-radius: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.monitor-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    45deg,
+    rgba(56, 189, 248, 0.15),
+    rgba(103, 232, 249, 0.05)
+  );
+  z-index: 0;
+}
+
+.monitor-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: #f8fafc;
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+}
+
+/* 炫酷按钮 */
+.apple-button {
+  border-radius: 50% !important;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.6) !important;
+  border: none !important;
+  background: linear-gradient(45deg, #0ea5e9, #2dd4bf) !important;
+  transition: all 0.3s ease;
+}
+
+.apple-button:hover {
+  transform: translateY(-3px) scale(1.05);
+  box-shadow: 0 0 30px rgba(56, 189, 248, 0.8) !important;
+}
+
+/* 炫酷卡片 */
+.stat-card {
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 25px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 180px;
+  transition: all 0.3s ease;
+  background: linear-gradient(
+    135deg,
+    rgba(20, 184, 166, 0.2),
+    rgba(14, 165, 233, 0.2)
+  );
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(
+    circle at 80% 30%,
+    rgba(255, 255, 255, 0.1) 0%,
+    transparent 70%
+  );
+  z-index: 0;
+}
+
+.stat-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3),
+  0 0 20px rgba(56, 189, 248, 0.4);
+}
+
+.stat-icon {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  font-size: 38px;
+  opacity: 0.8;
+  color: #94a3b8;
+  z-index: 1;
+}
+
+.stat-info {
+  position: relative;
+  z-index: 1;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.stat-value {
+  font-size: 42px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: #f8fafc;
+  letter-spacing: -0.5px;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+.stat-label {
+  font-size: 16px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.stat-progress {
+  margin-top: auto;
+  z-index: 1;
+}
+
+/* 炫酷进度条 */
+.apple-progress :deep(.el-progress-bar__outer) {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.apple-progress :deep(.el-progress-bar__inner) {
+  border-radius: 6px;
+  background: linear-gradient(90deg, #06b6d4, #0ea5e9);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);
+  transition: width 0.6s ease,
+  background-color 0.6s ease;
+}
+
+.chart-row {
+  margin-bottom: 25px;
+}
+
+/* 炫酷图表卡片 */
+.chart-card,
+.info-card {
+  height: 100%;
+  margin-bottom: 25px;
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.3s;
+  border: none;
+  background: linear-gradient(
+    135deg,
+    rgba(12, 74, 110, 0.6),
+    rgba(15, 23, 42, 0.7)
+  );
+}
+
+.chart-card:hover,
+.info-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3),
+  0 0 20px rgba(56, 189, 248, 0.3);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(12, 74, 110, 0.3);
+}
+
+.card-header span {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f8fafc;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+/* 炫酷标签页 */
+.apple-tabs {
+  margin-bottom: 25px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: none;
+  border: none;
+  background: rgba(30, 41, 59, 0.7);
+}
+
+.apple-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(12, 74, 110, 0.7),
+    rgba(15, 23, 42, 0.8)
+  );
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.apple-tabs :deep(.el-tabs__nav) {
+  border: none;
+}
+
+.apple-tabs :deep(.el-tabs__item) {
+  font-size: 16px;
+  padding: 16px 24px;
+  height: auto;
+  transition: all 0.3s;
+  color: #94a3b8;
+}
+
+.apple-tabs :deep(.el-tabs__item.is-active) {
+  color: #38bdf8;
+  font-weight: 600;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+}
+
+.apple-tabs :deep(.el-tabs__active-bar) {
+  background: linear-gradient(90deg, #06b6d4, #0ea5e9);
+  height: 3px;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);
+}
+
+.apple-tabs :deep(.el-tabs__content) {
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* 系统信息部分样式 */
+.system-info-container {
+  padding: 15px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue',
+  sans-serif;
+}
+
+.sys-section {
+  margin-bottom: 25px;
+  border-radius: 16px;
+  background: rgba(30, 41, 59, 0.5);
+  padding: 20px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+
+.sys-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(
+    circle at 90% 10%,
+    rgba(56, 189, 248, 0.15) 0%,
+    transparent 70%
+  );
+  z-index: 0;
+}
+
+.sys-section:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3),
+  0 0 10px rgba(56, 189, 248, 0.2);
+}
+
+.sys-section-title {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  color: #38bdf8;
+  position: relative;
+  z-index: 1;
+}
+
+.sys-section-title .el-icon {
+  margin-right: 10px;
+  font-size: 20px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+}
+
+.sys-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  position: relative;
+  z-index: 1;
+}
+
+.sys-info-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border-radius: 8px;
+  transition: all 0.3s;
+  background: rgba(30, 41, 59, 0.6);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.sys-info-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(to bottom, #38bdf8, #0ea5e9);
+}
+
+.sys-info-item:hover {
+  background: rgba(51, 65, 85, 0.6);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3),
+  0 0 10px rgba(56, 189, 248, 0.2);
+}
+
+.sys-info-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.15);
+  margin-right: 12px;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+}
+
+.sys-info-icon .el-icon {
+  font-size: 18px;
+  color: #38bdf8;
+}
+
+.sys-info-content {
+  flex: 1;
+}
+
+.sys-info-label {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.sys-info-value {
+  font-size: 13px;
+  font-weight: 400;
+  color: #f8fafc;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+/* 线程监控样式 */
+.thread-monitor {
+  padding: 10px;
+}
+
+.thread-stats-card {
+  margin-bottom: 25px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.thread-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 35px;
+  justify-content: space-around;
+  padding: 24px;
+}
+
+.thread-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform 0.3s;
+}
+
+.thread-stat-item:hover {
+  transform: translateY(-5px);
+}
+
+.thread-stat-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  font-size: 26px;
+  font-weight: bold;
+  color: white;
+  margin-bottom: 15px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.state-runnable {
+  background: #22c55e;
+}
+
+.state-blocked {
+  background: #ef4444;
+}
+
+.state-waiting {
+  background: #f97316;
+}
+
+.state-timed_waiting {
+  background: #3b82f6;
+}
+
+.state-new {
+  background: #94a3b8;
+}
+
+.state-terminated {
+  background: #8b5cf6;
+}
+
+.thread-stat-label {
+  font-size: 16px;
+  font-weight: 500;
+  color: #e2e8f0;
+}
+
+/* 线程堆栈弹窗样式 */
+.thread-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 16px;
+  background: rgba(30, 41, 59, 0.7);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.stacktrace-content {
+  background: rgba(15, 23, 42, 0.8);
+  padding: 20px;
+  border-radius: 12px;
+  max-height: 450px;
+  overflow: auto;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.6;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #94a3b8;
+}
+
+.stacktrace-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.stacktrace-content::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 4px;
+}
+
+.stacktrace-content::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.5);
+  border-radius: 4px;
+}
+
+.stacktrace-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.7);
+}
+
+/* 增大内存分配和堆内存图表 */
+.memory-chart-container {
+  height: 400px !important;
+}
+
+/* 自定义状态图标颜色 */
+.memory-icon,
+.free-memory-icon {
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.memory-icon .el-icon,
+.free-memory-icon .el-icon {
+  color: #22c55e;
+}
+
+.used-memory-icon,
+.swap-icon,
+.disk-usage-icon {
+  background: rgba(249, 115, 22, 0.15);
+}
+
+.used-memory-icon .el-icon,
+.swap-icon .el-icon,
+.disk-usage-icon .el-icon {
+  color: #f97316;
+}
+
+.time-icon,
+.timezone-icon {
+  background: rgba(56, 189, 248, 0.15);
+}
+
+.time-icon .el-icon,
+.timezone-icon .el-icon {
+  color: #38bdf8;
+}
+
+.start-time-icon,
+.uptime-icon {
+  background: rgba(249, 115, 22, 0.15);
+}
+
+.start-time-icon .el-icon,
+.uptime-icon .el-icon {
+  color: #f97316;
+}
+
+.jvm-icon,
+.java-home-icon,
+.jvm-args-icon,
+.gc-icon {
+  background: rgba(139, 92, 246, 0.15);
+}
+
+.jvm-icon .el-icon,
+.java-home-icon .el-icon,
+.jvm-args-icon .el-icon,
+.gc-icon .el-icon {
+  color: #8b5cf6;
+}
+
+.disk-icon,
+.disk-free-icon {
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.disk-icon .el-icon,
+.disk-free-icon .el-icon {
+  color: #22c55e;
+}
+
+.disk-used-icon {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.disk-used-icon .el-icon {
+  color: #ef4444;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .sys-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .system-monitor {
+    padding: 16px;
+  }
+
+  .stat-value {
+    font-size: 32px;
+  }
+}
+
+/* 炫酷表格样式 */
+.thread-details-card :deep(.el-table) {
+  background: transparent !important;
+  color: #e2e8f0 !important;
+}
+
+.thread-details-card :deep(.el-table tr) {
+  background: rgba(30, 41, 59, 0.7) !important;
+}
+
+.thread-details-card :deep(.el-table th) {
+  background: rgba(12, 74, 110, 0.7) !important;
+  color: #f8fafc !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.thread-details-card :deep(.el-table td) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.thread-details-card
+:deep(.el-table--striped .el-table__body tr.el-table__row--striped td) {
+  background: rgba(51, 65, 85, 0.5) !important;
+}
+
+.thread-details-card
+:deep(.el-table--enable-row-hover .el-table__body tr:hover > td) {
+  background-color: rgba(56, 189, 248, 0.1) !important;
+}
+
+/* 闪光动画 */
+@keyframes glow {
+  0% {
+    box-shadow: 0 0 5px rgba(56, 189, 248, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.8),
+    0 0 30px rgba(56, 189, 248, 0.6);
+  }
+  100% {
+    box-shadow: 0 0 5px rgba(56, 189, 248, 0.5);
+  }
+}
+
+.animated-glow {
+  animation: glow 3s infinite;
+}
+
+/* JVM信息立体卡片 */
+.jvm-info-card {
+  border-radius: 16px;
+  background: linear-gradient(
+    135deg,
+    rgba(12, 74, 110, 0.7),
+    rgba(15, 23, 42, 0.8)
+  );
+  overflow: hidden;
+  transition: all 0.3s;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue',
+  sans-serif;
+}
+
+.jvm-info-header {
+  padding: 20px;
+  background: rgba(12, 74, 110, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.jvm-info-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+
+.jvm-info-header h3 .el-icon {
+  margin-right: 10px;
+  background: rgba(56, 189, 248, 0.15);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+}
+
+.jvm-info-content {
+  padding: 20px;
+  flex: 1;
+}
+
+.jvm-info-item {
+  display: flex;
+  margin-bottom: 15px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+.jvm-info-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(to bottom, #38bdf8, #0ea5e9);
+}
+
+.jvm-info-label {
+  flex-basis: 120px;
+  font-weight: 500;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.jvm-info-value {
+  flex: 1;
+  font-weight: 400;
+  color: #f8fafc;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 3D堆内存可视化 */
+.heap-visualization {
+  height: 300px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.5);
+  margin-top: 15px;
+  position: relative;
+  overflow: hidden;
+  perspective: 800px;
+}
+
+.heap-visualization-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform: rotateX(60deg) rotateZ(-30deg);
+  transform-origin: center center;
+}
+
+.heap-bar {
+  position: absolute;
+  bottom: 0;
+  width: 80px;
+  border-radius: 4px 4px 0 0;
+  transform-style: preserve-3d;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 10px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.heap-bar-init {
+  left: 20%;
+  height: calc(var(--heap-init-percent) * 250px);
+  background: linear-gradient(to top, #3b82f6, #60a5fa);
+  transform: translateZ(40px);
+}
+
+.heap-bar-used {
+  left: 50%;
+  height: calc(var(--heap-used-percent) * 250px);
+  background: linear-gradient(to top, #ef4444, #f87171);
+  transform: translateZ(20px);
+}
+
+.heap-bar-max {
+  left: 80%;
+  height: calc(var(--heap-max-percent) * 250px);
+  background: linear-gradient(to top, #22c55e, #4ade80);
+  transform: translateZ(0);
+}
+
+.heap-grid {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+  linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+  transform: rotateX(90deg) translateZ(-150px);
+}
+
+.heap-bar-label {
+  position: absolute;
+  bottom: -30px;
+  width: 100%;
+  text-align: center;
+  color: #94a3b8;
+  transform: translateY(20px) rotateX(-90deg);
+}
+
+.memory-distribution-container {
+  height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.memory-chart-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.memory-stats {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 20px;
+}
+
+.memory-stat-item {
+  text-align: center;
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 8px;
+  padding: 15px;
+  width: 30%;
+  position: relative;
+  overflow: hidden;
+}
+
+.memory-stat-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+}
+
+.memory-stat-used::before {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+.memory-stat-free::before {
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+}
+
+.memory-stat-total::before {
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+}
+
+.memory-stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 5px;
+}
+
+.memory-stat-label {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+/* 动画效果 */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.pulse-animation {
+  animation: pulse 2s infinite;
+}
+
+.thread-control-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.refresh-btn {
+  background: linear-gradient(45deg, #0ea5e9, #38bdf8) !important;
+  border: none !important;
+  box-shadow: 0 4px 10px rgba(14, 165, 233, 0.3) !important;
+  transition: all 0.3s ease;
+}
+
+.refresh-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(14, 165, 233, 0.5) !important;
+}
+
+.search-box {
+  position: relative;
+  width: 300px;
+}
+
+.search-input {
+  width: 100%;
+}
+
+.search-input :deep(.el-input__wrapper) {
+  background: rgba(30, 41, 59, 0.5) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+  border-radius: 20px !important;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.search-input :deep(.el-input__wrapper:hover),
+.search-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.5) !important;
+}
+
+.search-input :deep(.el-input__inner) {
+  color: #e2e8f0 !important;
+}
+
+.search-input :deep(.el-input__prefix) {
+  color: #94a3b8;
+}
+
+.search-input :deep(.el-input__suffix) {
+  color: #94a3b8;
+}
+</style>

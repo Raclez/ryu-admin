@@ -1,25 +1,154 @@
 import type { RouteRecordStringComponent } from '@vben/types';
+import type {IdType, TreeNode} from '#/api/types';
 
 import { requestClient } from '#/api/request';
 
-/**
- * 获取用户所有菜单
- */
-export async function getAllMenusApi() {
-  return requestClient.get<RouteRecordStringComponent[]>('/menu/all');
+export namespace MenuApi {
+  /**
+   * 菜单项类型
+   */
+  export interface MenuItem {
+    /** 菜单ID */
+    id: string;
+    /** 菜单名称 */
+    name: string;
+    /** 菜单标题 */
+    title: string;
+    /** 菜单路径 */
+    path: string;
+    /** 组件路径 */
+    component?: string;
+    /** 图标 */
+    icon?: string;
+    /** 父级ID */
+    parentId?: string;
+    /** 排序 */
+    orderNo?: number;
+    /** 是否隐藏 */
+    hidden?: boolean;
+    /** 是否缓存 */
+    keepAlive?: boolean;
+    /** 菜单类型(0-目录,1-菜单,2-按钮) */
+    type?: number;
+    /** 权限标识 */
+    permission?: string;
+    /** 创建时间 */
+    createTime?: string;
+    /** 更新时间 */
+    updateTime?: string;
+    /** 子菜单 */
+    children?: MenuItem[];
+    /** 额外元数据 */
+    meta?: Record<string, any>;
+  }
+
+  /**
+   * 菜单树节点
+   */
+  export interface MenuTreeNode extends TreeNode {
+    /** 菜单ID */
+    id: string;
+    /** 菜单名称 */
+    label: string;
+    /** 菜单路径 */
+    path?: string;
+    /** 组件路径 */
+    component?: string;
+    /** 图标 */
+    icon?: string;
+    /** 父级ID */
+    parentId?: string;
+    /** 排序 */
+    orderNo?: number;
+    /** 菜单类型(0-目录,1-菜单,2-按钮) */
+    type?: number;
+    /** 权限标识 */
+    permission?: string;
+    /** 子菜单 */
+    children?: MenuTreeNode[];
+  }
+
+  /**
+   * 菜单创建/更新参数
+   */
+  export interface MenuCreateParams {
+    /** 菜单ID(更新时需要) */
+    id?: string;
+    /** 菜单名称 */
+    name: string;
+    /** 菜单标题 */
+    title: string;
+    /** 菜单路径 */
+    path: string;
+    /** 组件路径 */
+    component?: string;
+    /** 图标 */
+    icon?: string;
+    /** 父级ID */
+    parentId?: string;
+    /** 排序 */
+    orderNo?: number;
+    /** 是否隐藏 */
+    hidden?: boolean;
+    /** 是否缓存 */
+    keepAlive?: boolean;
+    /** 菜单类型(0-目录,1-菜单,2-按钮) */
+    type?: number;
+    /** 权限标识 */
+    permission?: string;
+  }
 }
 
-export async function getMenusByTree() {
+/**
+ * 获取用户所有菜单
+ * @description 获取当前登录用户可访问的所有菜单
+ * @returns 路由菜单列表
+ */
+export async function getAllMenusApi(): Promise<RouteRecordStringComponent[]> {
+  return requestClient.get('/menu/all');
+}
+
+/**
+ * 获取菜单树
+ * @description 获取所有菜单的树形结构
+ * @returns 菜单树
+ */
+export async function getMenusByTree(): Promise<MenuApi.MenuTreeNode[]> {
   return requestClient.get('/ryu-user/menus/tree');
 }
 
-export async function saveMenu(data: any) {
+/**
+ * 创建菜单
+ * @param data 菜单数据
+ * @returns 创建结果，返回菜单ID
+ */
+export async function saveMenu(data: MenuApi.MenuCreateParams): Promise<string> {
   return requestClient.post('/ryu-user/menus/save', data);
 }
 
-export async function updateMenu(data: any) {
+/**
+ * 更新菜单
+ * @param data 菜单数据
+ * @returns 更新结果
+ */
+export async function updateMenu(data: MenuApi.MenuCreateParams): Promise<boolean> {
   return requestClient.put('/ryu-user/menus/edit', data);
 }
-export async function deleteMenu(id: string) {
+
+/**
+ * 删除菜单
+ * @param id 菜单ID
+ * @returns 删除结果
+ */
+export async function deleteMenu(id: string): Promise<boolean> {
   return requestClient.delete(`/ryu-user/menus/delete/${id}`);
+}
+
+/**
+ * 获取菜单详情
+ * @param id 菜单ID
+ * @returns 菜单详情
+ */
+export async function getMenuDetail(id: string): Promise<MenuApi.MenuItem> {
+  return requestClient.get(`/ryu-user/menus/${id}`);
 }

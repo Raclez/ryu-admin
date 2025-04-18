@@ -2,9 +2,9 @@
 import {defineStore} from 'pinia';
 
 import {
-  addCategory,
+  createCategory,
   deleteCategory,
-  getCategoryList,
+  getAllCategory,
   getCategoryPage,
   updateCategory,
 } from '#/api/core/category';
@@ -45,11 +45,11 @@ export const useCategoryStore = defineStore('category', {
     },
 
     async fetchAllCategories() {
-      this.allCategories = await getCategoryList();
+      this.allCategories = await getAllCategory();
     },
 
     async addCategory(data: Category) {
-      await addCategory(data);
+      await createCategory(data);
       await this.fetchCategories();
     },
     async updateCategory(data: Category) {

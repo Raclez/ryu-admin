@@ -1,5 +1,6 @@
 import type {RouteRecordRaw} from "vue-router";
-import {Tools, Notebook, Setting, Operation} from '@element-plus/icons-vue'
+import {Tools, Notebook, Setting, Operation, Warning} from '@element-plus/icons-vue'
+
 const routes: RouteRecordRaw[] = [
   {
     meta: {
@@ -8,26 +9,36 @@ const routes: RouteRecordRaw[] = [
       order: 500,
       title: '系统管理',
     },
-    name: 'System',
-    path: '/system',
+    name: 'SystemManagement',
+    path: '/system-management',
     children: [
       {
         meta: {
-          title: '字典类型管理',
+          title: '字典管理',
           icon: Notebook,
         },
-        name: 'DictType',
-        path: '/sysDictType/page',
-        component: () => import('#/views/demos/dictType/index.vue'),
-      },
-      {
-        meta: {
-          title: '字典项管理',
-          icon: Operation
-        },
-        name: 'DictItem',
-        path: '/sysDictItem/page',
-        component: () => import('#/views/demos/dictItem/index.vue'),
+        name: 'Dict',
+        path: '/dict',
+        children: [
+          {
+            meta: {
+              title: '字典类型',
+              icon: Notebook,
+            },
+            name: 'DictType',
+            path: '/dict/type',
+            component: () => import('#/views/features/dict/type/DictTypeList.vue'),
+          },
+          {
+            meta: {
+              title: '字典数据',
+              icon: Operation,
+            },
+            name: 'DictItem',
+            path: '/dict/item',
+            component: () => import('#/views/features/dict/item/DictItemList.vue'),
+          },
+        ],
       },
       {
         meta: {
@@ -35,11 +46,18 @@ const routes: RouteRecordRaw[] = [
           icon: Setting,
         },
         name: 'SystemConfig',
-        path: '/sysConfig/getSysConfig',
-        component: () => import('#/views/demos/systemConfig/index.vue'),
-      }
-
-
+        path: '/system-config/form',
+        component: () => import('#/views/features/system-config/SystemConfigForm.vue'),
+      },
+      {
+        meta: {
+          title: '系统监控',
+          icon: Warning,
+        },
+        name: 'SystemMonitor',
+        path: '/system/monitor',
+        component: () => import('#/views/features/system/SystemLog.vue'),
+      },
     ],
   },
 ];

@@ -12,13 +12,16 @@
   </div>
 </template>
 
-<script setup>
+<script lang="ts" setup>
 import {ref, onMounted, onBeforeUnmount, watch, shallowRef, nextTick, defineExpose} from 'vue';
 import * as monaco from 'monaco-editor';
 import { ElMessage } from 'element-plus';
 import {ArrowUp, ArrowDown, Loading} from '@element-plus/icons-vue';
 
-// 配置 Monaco 编辑器
+/**
+ * Monaco编辑器环境配置
+ * 设置CDN地址用于加载相应的worker文件
+ */
 if (!window.MonacoEnvironment) {
   window.MonacoEnvironment = {
     getWorkerUrl: function (_, label) {
@@ -32,46 +35,101 @@ if (!window.MonacoEnvironment) {
   };
 }
 
+/**
+ * 版本信息接口
+ */
+interface VersionInfo {
+  id?: string;
+  version?: string;
+  createTime?: string;
+
+  [key: string]: any;
+}
+
+/**
+ * 差异导航事件接口
+ */
+interface DiffNavigationEvent {
+  currentIndex: number;
+  currentLine: number;
+  currentColumn: number;
+  totalDiffs: number;
+}
+
+/**
+ * 差异加载事件接口
+ */
+interface DiffLoadedEvent {
+  diffCount: number;
+  totalLines: number;
+}
+
 const props = defineProps({
+  /**
+   * 原始文本内容
+   */
   original: {
     type: String,
     required: true
   },
+  /**
+   * 修改后的文本内容
+   */
   modified: {
     type: String,
     required: true
   },
+  /**
+   * 语言类型
+   */
   language: {
     type: String,
     default: 'markdown'
   },
+  /**
+   * 前一个版本信息
+   */
   previousVersion: {
-    type: Object,
+    type: Object as () => VersionInfo | null,
     default: null
   },
+  /**
+   * 当前版本信息
+   */
   currentVersion: {
-    type: Object,
+    type: Object as () => VersionInfo | null,
     default: null
   },
+  /**
+   * 是否并排显示差异
+   */
   renderSideBySide: {
     type: Boolean,
     default: true
   }
 });
+
+// 状态变量
 const compareDialogVisible = ref(false);
-const editorContainer = ref(null);
-const diffEditor = shallowRef(null);
+const editorContainer = ref<HTMLElement | null>(null);
+const diffEditor = shallowRef<monaco.editor.IStandaloneDiffEditor | null>(null);
 const loading = ref(false);
-const resizeHandler = shallowRef(null);
+const resizeHandler = shallowRef<(() => void) | null>(null);
 const currentDiffIndex = ref(0);
 const diffCount = ref(0);
-const diffList = ref([]);
-let controlsElement = null;
+const diffList = ref<monaco.editor.ILineChange[]>([]);
+let controlsElement: HTMLElement | null = null;
 const controlsCreated = ref(false);
 
-const emit = defineEmits(['diffLoaded', 'diffNavigated']);
+const emit = defineEmits<{
+  (e: 'diffLoaded', data: DiffLoadedEvent): void;
+  (e: 'diffNavigated', data: DiffNavigationEvent): void;
+}>();
 
-// 更新差异信息
+/**
+ * 更新差异信息
+ * 获取并统计差异行，更新导航数据
+ */
 const updateDiffInfo = () => {
   if (!diffEditor.value) return;
 
@@ -93,11 +151,13 @@ const updateDiffInfo = () => {
   // 发射差异加载完成事件
   emit('diffLoaded', {
     diffCount: diffCount.value,
-    totalLines: diffEditor.value.getModifiedEditor().getModel().getLineCount() || 0
+    totalLines: diffEditor.value.getModifiedEditor().getModel()?.getLineCount() || 0
   });
 };
 
-// 导航到下一个差异
+/**
+ * 导航到下一个差异
+ */
 const goToNextDiff = () => {
   if (diffCount.value === 0) return;
 
@@ -110,7 +170,9 @@ const goToNextDiff = () => {
   }
 };
 
-// 导航到上一个差异
+/**
+ * 导航到上一个差异
+ */
 const goToPreviousDiff = () => {
   if (diffCount.value === 0) return;
 
@@ -123,8 +185,13 @@ const goToPreviousDiff = () => {
   }
 };
 
-// 发射导航事件
+/**
+ * 发射导航事件
+ * 通知父组件当前差异位置变化
+ */
 const emitNavigationEvent = () => {
+  if (!diffEditor.value) return;
+
   // 获取当前位置
   const currentEditor = diffEditor.value.getModifiedEditor();
   const position = currentEditor.getPosition();
@@ -137,11 +204,16 @@ const emitNavigationEvent = () => {
   });
 };
 
-// 跳转到指定差异
-const jumpToDiff = (index) => {
+/**
+ * 跳转到指定差异位置
+ * @param index 差异索引
+ */
+const jumpToDiff = (index: number) => {
   if (!diffEditor.value || index < 0 || index >= diffList.value.length) return;
 
   const change = diffList.value[index];
+  if (!change) return;
+
   const modifiedEditor = diffEditor.value.getModifiedEditor();
   const originalEditor = diffEditor.value.getOriginalEditor();
 
@@ -173,7 +245,7 @@ const jumpToDiff = (index) => {
     }, 3000);
 
     modifiedEditor.focus();
-  } else {
+  } else if (change.originalStartLineNumber > 0) {
     originalEditor.revealLineInCenter(change.originalStartLineNumber);
     originalEditor.setPosition({lineNumber: change.originalStartLineNumber, column: 1});
 
@@ -244,7 +316,7 @@ const addVersionLabels = () => {
 };
 
 // 格式化日期
-const formatDate = (date) => {
+const formatDate = (date: string | undefined) => {
   if (!date) return '未知时间';
 
   // 如果已经是格式化的字符串，直接返回
@@ -851,7 +923,7 @@ const initEditor = async () => {
 };
 
 // 处理键盘事件
-const handleKeyDown = (event) => {
+const handleKeyDown = (event: KeyboardEvent) => {
   if (!diffEditor.value) return;
 
   // 使用方向键导航差异

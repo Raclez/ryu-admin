@@ -1,5 +1,6 @@
-import type {RouteRecordRaw} from "vue-router";
-import {Help, Menu, Operation, User} from '@element-plus/icons-vue'
+import type {RouteRecordRaw} from 'vue-router';
+
+import {Help, Menu, Operation, User} from '@element-plus/icons-vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -10,7 +11,7 @@ const routes: RouteRecordRaw[] = [
       title: '权限管理',
     },
     name: 'Authority',
-    path: '/roles',
+    path: '/authority',
     children: [
       {
         meta: {
@@ -18,29 +19,28 @@ const routes: RouteRecordRaw[] = [
           icon: User,
         },
         name: 'Role',
-        path: '/roles/list',
-        component: () => import('#/views/demos/roles/index.vue'),
+        path: '/role/list',
+        component: () => import('#/views/features/role/RoleList.vue'),
       },
       {
         meta: {
           title: '菜单管理',
-          icon: Menu
+          icon: Menu,
         },
-        name: 'Menus',
-        path: '/menus/tree',
-        component: () => import('#/views/demos/menus/index.vue'),
+        name: 'Menu',
+        path: '/menu/list',
+        component: () => import('#/views/features/menu/MenuList.vue'),
       },
       {
         meta: {
           title: '权限管理',
-          icon: Operation
+          icon: Operation,
         },
-        name: 'PermissionMange',
-        path: '/permission/page',
-        component: () => import('#/views/demos/permission/index.vue'),
-      }
-
-
+        name: 'Permission',
+        path: '/permission/list',
+        component: () =>
+          import('#/views/features/permission/PermissionList.vue'),
+      },
     ],
   },
 ];
