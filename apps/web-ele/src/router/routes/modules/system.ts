@@ -1,5 +1,5 @@
 import type {RouteRecordRaw} from "vue-router";
-import {Tools, Notebook, Setting, Operation, Warning} from '@element-plus/icons-vue'
+import {Tools, Notebook, Setting, Operation, Warning, Monitor} from '@element-plus/icons-vue'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -57,6 +57,15 @@ const routes: RouteRecordRaw[] = [
         name: 'SystemMonitor',
         path: '/system/monitor',
         component: () => import('#/views/features/system/SystemLog.vue'),
+      },
+      {
+        meta: {
+          title: 'SpringBoot监控',
+          icon: Monitor,
+        },
+        name: 'SpringBootAdmin',
+        path: '/system/springboot-admin',
+        component: () => import('#/views/features/system/SpringBootAdmin.vue'),
       },
     ],
   },

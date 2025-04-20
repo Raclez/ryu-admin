@@ -183,71 +183,114 @@
     <!-- 分配权限对话框 -->
     <el-dialog
       v-model="permissionsDialogVisible"
-      class="custom-dialog"
+      class="custom-dialog permission-dialog"
       title="分配权限"
-      width="700px"
+      width="800px"
     >
       <div v-if="currentRole" class="permission-header">
-        <h3>为角色 "{{ currentRole.name }}" 分配权限</h3>
+        <el-alert
+          :closable="false"
+          show-icon
+          type="info"
+        >
+          <template #title>
+            <span>为角色 "<strong>{{ currentRole.name }}</strong>" 分配权限</span>
+          </template>
+        </el-alert>
       </div>
 
-      <el-tabs v-model="activeTab">
+      <div class="permission-toolbar">
+        <el-input
+          v-model="permissionSearchQuery"
+          clearable
+          placeholder="搜索权限名称或标识"
+          prefix-icon="Search"
+          @input="filterPermissions"
+        />
+        <div class="permission-actions">
+          <el-button size="default" type="primary" @click="selectAllPermissions">全选</el-button>
+          <el-button size="default" type="info" @click="deselectAllPermissions">清空</el-button>
+        </div>
+      </div>
+
+      <el-tabs v-model="activeTab" class="permission-tabs">
         <el-tab-pane label="按模块选择" name="module">
-          <div class="module-container">
-            <div v-for="(permissions, module) in groupedPermissions" :key="module"
-                 class="module-item">
-              <div class="module-header">
-                <el-checkbox
-                  v-model="moduleSelection[module]"
-                  @change="handleModuleCheckChange(module)"
-                >
-                  {{ module }}
-                </el-checkbox>
-              </div>
-              <div class="permission-list">
-                <el-checkbox
-                  v-for="permission in permissions"
-                  :key="permission.id"
-                  v-model="selectedPermissions[permission.id]"
-                  class="permission-checkbox"
-                  @change="handlePermissionChange"
-                >
-                  <div class="permission-item">
-                    <span class="permission-name">{{ permission.name }}</span>
-                    <el-tag class="permission-tag" size="small" type="primary">
-                      {{ permission.identity }}
-                    </el-tag>
-                  </div>
-                </el-checkbox>
-              </div>
-            </div>
-          </div>
+          <el-scrollbar height="400px">
+            <el-tree
+              ref="permissionTreeRef"
+              :data="permissionTree"
+              :default-checked-keys="checkedPermissionKeys"
+              :default-expanded-keys="expandedKeys"
+              :props="{
+                label: 'name',
+                children: 'children'
+              }"
+              highlight-current
+              node-key="id"
+              show-checkbox
+              @check="handleTreeCheck"
+            >
+              <template #default="{ node, data }">
+                <div class="tree-node-content">
+                  <span class="tree-node-label">{{ node.label }}</span>
+                  <el-tag
+                    v-if="data.identity"
+                    class="tree-node-tag"
+                    size="small"
+                    type="primary"
+                  >
+                    {{ data.identity }}
+                  </el-tag>
+                  <span v-if="data.description" class="tree-node-desc">{{ data.description }}</span>
+                </div>
+              </template>
+            </el-tree>
+          </el-scrollbar>
         </el-tab-pane>
-        <el-tab-pane label="权限列表" name="list">
-          <el-table :data="permissionsList" border class="permission-table" stripe>
-            <el-table-column type="selection" width="55"/>
-            <el-table-column label="权限名称" min-width="150" prop="name"/>
-            <el-table-column label="权限标识" min-width="150" prop="identity">
-              <template #default="scope">
-                <el-tag size="small" type="primary">{{ scope.row.identity }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="所属模块" min-width="120" prop="module">
-              <template #default="scope">
-                <el-tag size="small" type="success">{{ scope.row.module }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="权限描述" min-width="180" prop="description"
-                             show-overflow-tooltip/>
-          </el-table>
+
+        <el-tab-pane label="表格视图" name="table">
+          <el-scrollbar height="400px">
+            <el-table
+              :data="filteredPermissionsList"
+              border
+              class="permission-table"
+              row-key="id"
+              stripe
+              @selection-change="handleTableSelectionChange"
+            >
+              <el-table-column :selectable="isPermissionSelectable" type="selection" width="55"/>
+              <el-table-column label="权限名称" min-width="150" prop="name" show-overflow-tooltip/>
+              <el-table-column label="权限标识" min-width="150" prop="identity"
+                               show-overflow-tooltip>
+                <template #default="scope">
+                  <el-tag size="small" type="primary">{{ scope.row.identity }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="所属模块" min-width="120" prop="module" show-overflow-tooltip>
+                <template #default="scope">
+                  <el-tag size="small" type="success">{{ scope.row.module }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="权限描述" min-width="180" prop="description"
+                               show-overflow-tooltip/>
+            </el-table>
+          </el-scrollbar>
         </el-tab-pane>
       </el-tabs>
 
+      <div class="permission-footer">
+        <div class="permission-stats">
+          已选择
+          <el-tag effect="dark" type="success">{{ selectedPermissionCount }}</el-tag>
+          个权限，共 {{ permissionsList.length }} 个
+        </div>
+      </div>
+
       <template #footer>
         <div class="dialog-footer">
-          <el-button class="cancel-button" @click="permissionsDialogVisible = false">取消
-          </el-button>
-          <el-button class="submit-button" type="primary" @click="saveRolePermissions">保存
+          <el-button class="cancel-button" @click="cancelPermissionAssignment">取消</el-button>
+          <el-button :loading="savingPermissions" class="submit-button" type="primary"
+                     @click="saveRolePermissions">保存
           </el-button>
         </div>
       </template>
@@ -259,10 +302,10 @@
 </template>
 
 <script setup>
-import {ref, reactive, onMounted, computed} from 'vue';
+import {ref, reactive, onMounted, computed, nextTick} from 'vue';
 import {Search, Refresh, Plus, Edit, Delete, Filter, Setting} from '@element-plus/icons-vue';
 import {ElMessage, ElMessageBox} from 'element-plus';
-import {addRole, deleteRole, getRolesByPage, updateRole} from "#/api/core/roles.js";
+import {addRole, deleteRole, getRoleByCondition, updateRole} from "#/api/core/roles.ts";
 import {useWindowSize} from '@vueuse/core';
 
 // 响应式检测窗口大小
@@ -370,9 +413,23 @@ const handleBatchDelete = () => {
 const permissionsDialogVisible = ref(false);
 const currentRole = ref(null);
 const permissionsList = ref([]);
+const filteredPermissionsList = ref([]);
 const selectedPermissions = ref({});
 const activeTab = ref('module');
-const moduleSelection = ref({});
+const permissionSearchQuery = ref('');
+const savingPermissions = ref(false);
+const permissionTree = ref([]);
+const expandedKeys = ref([]);
+// 确保是数组类型
+const checkedPermissionKeys = ref([]);
+const permissionTableSelection = ref([]);
+// 树组件引用
+const permissionTreeRef = ref(null);
+
+// 计算已选择的权限数量
+const selectedPermissionCount = computed(() => {
+  return Object.values(selectedPermissions.value).filter(Boolean).length;
+});
 
 // 按模块分组的权限
 const groupedPermissions = computed(() => {
@@ -385,6 +442,282 @@ const groupedPermissions = computed(() => {
   });
   return groups;
 });
+
+// 将权限转换为树形结构
+const buildPermissionTree = () => {
+  const modules = {};
+
+  // 按模块分组
+  permissionsList.value.forEach(permission => {
+    if (!modules[permission.module]) {
+      modules[permission.module] = {
+        id: `module-${permission.module}`,
+        name: permission.module,
+        children: []
+      };
+    }
+
+    modules[permission.module].children.push({
+      id: permission.id,
+      name: permission.name,
+      identity: permission.identity,
+      description: permission.description
+    });
+  });
+
+  // 转换为数组
+  permissionTree.value = Object.values(modules);
+
+  // 设置默认展开的节点
+  expandedKeys.value = permissionTree.value.map(module => module.id);
+};
+
+// 处理树形控件选中状态变化
+const handleTreeCheck = (data, checkedStatus) => {
+  // 获取所有选中的节点ID
+  const {checkedNodes} = checkedStatus;
+
+  // 重置选中状态
+  permissionsList.value.forEach(permission => {
+    selectedPermissions.value[permission.id] = false;
+  });
+
+  // 设置新的选中状态 - 只选择叶子节点（实际权限）
+  checkedNodes.forEach(node => {
+    // 确保不是模块节点（没有children属性的节点为权限节点）
+    if (node.id && !node.children && typeof node.id === 'number') {
+      selectedPermissions.value[node.id] = true;
+    }
+  });
+};
+
+// 处理表格选择变化
+const handleTableSelectionChange = (selection) => {
+  // 保存当前表格选择
+  permissionTableSelection.value = selection;
+
+  // 先清除所有选择状态
+  Object.keys(selectedPermissions.value).forEach(key => {
+    selectedPermissions.value[key] = false;
+  });
+
+  // 设置新的选择状态
+  selection.forEach(item => {
+    if (item && item.id) {
+      selectedPermissions.value[item.id] = true;
+    }
+  });
+
+  // 如果在表格视图中，同步更新树选择状态
+  if (activeTab.value === 'table' && permissionTreeRef.value) {
+    const keys = selection.map(item => item.id).filter(id => id);
+    nextTick(() => {
+      permissionTreeRef.value.setCheckedKeys(keys);
+    });
+  }
+};
+
+// 检查权限是否可选
+const isPermissionSelectable = (row) => {
+  return true; // 可根据需要添加限制
+};
+
+// 筛选权限
+const filterPermissions = () => {
+  if (!permissionSearchQuery.value) {
+    filteredPermissionsList.value = permissionsList.value;
+    return;
+  }
+
+  const query = permissionSearchQuery.value.toLowerCase();
+  filteredPermissionsList.value = permissionsList.value.filter(permission =>
+    permission.name.toLowerCase().includes(query) ||
+    permission.identity.toLowerCase().includes(query) ||
+    permission.module.toLowerCase().includes(query) ||
+    (permission.description && permission.description.toLowerCase().includes(query))
+  );
+};
+
+// 全选权限
+const selectAllPermissions = () => {
+  // 设置所有权限为选中状态
+  permissionsList.value.forEach(permission => {
+    selectedPermissions.value[permission.id] = true;
+  });
+
+  // 使用组件引用更新树的选中状态
+  if (permissionTreeRef.value) {
+    const keys = permissionsList.value.map(item => item.id);
+    nextTick(() => {
+      permissionTreeRef.value.setCheckedKeys(keys);
+    });
+  }
+};
+
+// 清空选择
+const deselectAllPermissions = () => {
+  // 清空所有选中状态
+  permissionsList.value.forEach(permission => {
+    selectedPermissions.value[permission.id] = false;
+  });
+
+  // 使用组件引用更新树的选中状态
+  if (permissionTreeRef.value) {
+    nextTick(() => {
+      permissionTreeRef.value.setCheckedKeys([]);
+    });
+  }
+};
+
+// 取消权限分配
+const cancelPermissionAssignment = () => {
+  permissionsDialogVisible.value = false;
+  permissionSearchQuery.value = '';
+  filteredPermissionsList.value = [];
+};
+
+// 分配权限
+const handlePermissions = async (row) => {
+  currentRole.value = row;
+  permissionsDialogVisible.value = true;
+
+  try {
+    // 这里替换为实际的API调用
+    // const [allPermissions, rolePermissions] = await Promise.all([
+    //   api.getAllPermissions(),
+    //   api.getRolePermissions(row.id)
+    // ]);
+
+    // 模拟数据
+    const allPermissions = [
+      {
+        id: 1,
+        name: '查看用户',
+        identity: 'user:view',
+        module: '用户管理',
+        description: '查看用户列表'
+      },
+      {
+        id: 2,
+        name: '添加用户',
+        identity: 'user:add',
+        module: '用户管理',
+        description: '添加新用户'
+      },
+      {
+        id: 3,
+        name: '编辑用户',
+        identity: 'user:edit',
+        module: '用户管理',
+        description: '编辑用户信息'
+      },
+      {
+        id: 4,
+        name: '删除用户',
+        identity: 'user:delete',
+        module: '用户管理',
+        description: '删除用户'
+      },
+      {
+        id: 5,
+        name: '查看文章',
+        identity: 'article:view',
+        module: '内容管理',
+        description: '查看文章列表'
+      },
+      {
+        id: 6,
+        name: '添加文章',
+        identity: 'article:add',
+        module: '内容管理',
+        description: '添加新文章'
+      },
+      {
+        id: 7,
+        name: '编辑文章',
+        identity: 'article:edit',
+        module: '内容管理',
+        description: '编辑文章'
+      },
+      {
+        id: 8,
+        name: '删除文章',
+        identity: 'article:delete',
+        module: '内容管理',
+        description: '删除文章'
+      },
+      {
+        id: 9,
+        name: '查看评论',
+        identity: 'comment:view',
+        module: '评论管理',
+        description: '查看评论列表'
+      },
+      {
+        id: 10,
+        name: '审核评论',
+        identity: 'comment:review',
+        module: '评论管理',
+        description: '审核评论'
+      },
+    ];
+
+    // 模拟当前角色已有的权限ID
+    const rolePermissions = row.id === 1 ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] :
+      row.id === 2 ? [1, 5, 6, 7, 9, 10] : [1, 5, 9];
+
+    permissionsList.value = allPermissions;
+    filteredPermissionsList.value = allPermissions;
+
+    // 初始化选中状态
+    const selectedPerms = {};
+
+    allPermissions.forEach(permission => {
+      selectedPerms[permission.id] = rolePermissions.includes(permission.id);
+    });
+
+    selectedPermissions.value = selectedPerms;
+
+    // 构建权限树
+    buildPermissionTree();
+
+    // 设置初始选中的权限 - 确保是数字数组
+    const keys = rolePermissions.filter(id => typeof id === 'number');
+    checkedPermissionKeys.value = keys;
+
+  } catch (error) {
+    console.error('获取权限数据失败:', error);
+    ElMessage.error('获取权限数据失败');
+  }
+};
+
+// 保存角色权限
+const saveRolePermissions = async () => {
+  if (!currentRole.value) return;
+
+  // 获取选中的权限ID
+  const permissionIds = Object.entries(selectedPermissions.value)
+    .filter(([_, selected]) => selected)
+    .map(([id]) => parseInt(id));
+
+  try {
+    savingPermissions.value = true;
+    // 这里替换为实际的API调用
+    // await api.updateRolePermissions(currentRole.value.id, permissionIds);
+
+    // 模拟API调用延迟
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    ElMessage.success(`角色 "${currentRole.value.name}" 的权限已更新`);
+    permissionsDialogVisible.value = false;
+    permissionSearchQuery.value = '';
+    savingPermissions.value = false;
+  } catch (error) {
+    console.error('保存角色权限失败:', error);
+    ElMessage.error('保存角色权限失败');
+    savingPermissions.value = false;
+  }
+};
 
 // 初始化
 onMounted(() => {
@@ -400,7 +733,7 @@ const fetchRoles = async () => {
       pageSize: pageSize.value,
       name: searchQuery.value
     };
-    const res = await getRolesByPage(params)
+    const res = await getRoleByCondition(params)
     rolesList.value = res.records || [];
     total.value = res.total || 0;
     currentPage.value = res.current;
@@ -510,167 +843,6 @@ const submitRoleForm = async () => {
       return false;
     }
   });
-};
-
-// 分配权限
-const handlePermissions = async (row) => {
-  currentRole.value = row;
-  permissionsDialogVisible.value = true;
-
-  try {
-    // 这里替换为实际的API调用
-    // const [allPermissions, rolePermissions] = await Promise.all([
-    //   api.getAllPermissions(),
-    //   api.getRolePermissions(row.id)
-    // ]);
-
-    // 模拟数据
-    const allPermissions = [
-      {
-        id: 1,
-        name: '查看用户',
-        identity: 'user:view',
-        module: '用户管理',
-        description: '查看用户列表'
-      },
-      {
-        id: 2,
-        name: '添加用户',
-        identity: 'user:add',
-        module: '用户管理',
-        description: '添加新用户'
-      },
-      {
-        id: 3,
-        name: '编辑用户',
-        identity: 'user:edit',
-        module: '用户管理',
-        description: '编辑用户信息'
-      },
-      {
-        id: 4,
-        name: '删除用户',
-        identity: 'user:delete',
-        module: '用户管理',
-        description: '删除用户'
-      },
-      {
-        id: 5,
-        name: '查看文章',
-        identity: 'article:view',
-        module: '内容管理',
-        description: '查看文章列表'
-      },
-      {
-        id: 6,
-        name: '添加文章',
-        identity: 'article:add',
-        module: '内容管理',
-        description: '添加新文章'
-      },
-      {
-        id: 7,
-        name: '编辑文章',
-        identity: 'article:edit',
-        module: '内容管理',
-        description: '编辑文章'
-      },
-      {
-        id: 8,
-        name: '删除文章',
-        identity: 'article:delete',
-        module: '内容管理',
-        description: '删除文章'
-      },
-      {
-        id: 9,
-        name: '查看评论',
-        identity: 'comment:view',
-        module: '评论管理',
-        description: '查看评论列表'
-      },
-      {
-        id: 10,
-        name: '审核评论',
-        identity: 'comment:review',
-        module: '评论管理',
-        description: '审核评论'
-      },
-    ];
-
-    // 模拟当前角色已有的权限ID
-    const rolePermissions = row.id === 1 ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] :
-      row.id === 2 ? [1, 5, 6, 7, 9, 10] : [1, 5, 9];
-
-    permissionsList.value = allPermissions;
-
-    // 初始化选中状态
-    const selectedPerms = {};
-    const moduleSel = {};
-
-    allPermissions.forEach(permission => {
-      selectedPerms[permission.id] = rolePermissions.includes(permission.id);
-
-      if (!moduleSel[permission.module]) {
-        moduleSel[permission.module] = true;
-      }
-
-      if (!selectedPerms[permission.id]) {
-        moduleSel[permission.module] = false;
-      }
-    });
-
-    selectedPermissions.value = selectedPerms;
-    moduleSelection.value = moduleSel;
-
-  } catch (error) {
-    console.error('获取权限数据失败:', error);
-    ElMessage.error('获取权限数据失败');
-  }
-};
-
-// 模块选择变化
-const handleModuleCheckChange = (module) => {
-  const isChecked = moduleSelection.value[module];
-
-  // 更新该模块下所有权限的选中状态
-  groupedPermissions.value[module].forEach(permission => {
-    selectedPermissions.value[permission.id] = isChecked;
-  });
-};
-
-// 权限选择变化
-const handlePermissionChange = () => {
-  // 更新模块选中状态
-  Object.keys(groupedPermissions.value).forEach(module => {
-    const permissions = groupedPermissions.value[module];
-    const allSelected = permissions.every(permission =>
-      selectedPermissions.value[permission.id]
-    );
-
-    moduleSelection.value[module] = allSelected;
-  });
-};
-
-// 保存角色权限
-const saveRolePermissions = async () => {
-  if (!currentRole.value) return;
-
-  // 获取选中的权限ID
-  const permissionIds = Object.entries(selectedPermissions.value)
-    .filter(([_, selected]) => selected)
-    .map(([id]) => parseInt(id));
-
-  try {
-    // 这里替换为实际的API调用
-    // await api.updateRolePermissions(currentRole.value.id, permissionIds);
-
-    ElMessage.success(`角色 "${currentRole.value.name}" 的权限已更新`);
-    permissionsDialogVisible.value = false;
-  } catch (error) {
-    console.error('保存角色权限失败:', error);
-    ElMessage.error('保存角色权限失败');
-  }
 };
 </script>
 
@@ -812,61 +984,76 @@ const saveRolePermissions = async () => {
   gap: 10px;
 }
 
+/* 权限对话框样式 */
+.permission-dialog {
+  --el-dialog-padding-primary: 0;
+}
+
+.permission-dialog :deep(.el-dialog__body) {
+  padding: 0 !important;
+}
+
 .permission-header {
-  margin-bottom: 20px;
-  text-align: center;
-  color: var(--el-text-color-primary);
-}
-
-.module-container {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.module-item {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 4px;
-  padding: 15px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
-  transition: all 0.3s;
-}
-
-.module-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.1);
-}
-
-.module-header {
-  font-weight: bold;
-  margin-bottom: 15px;
-  padding-bottom: 10px;
+  padding: 16px;
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
-.permission-list {
+.permission-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
   gap: 15px;
 }
 
-.permission-checkbox {
-  margin-right: 10px;
-  margin-bottom: 10px;
-}
-
-.permission-item {
+.permission-actions {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  gap: 10px;
 }
 
-.permission-name {
+.permission-tabs {
+  padding: 0 16px;
+}
+
+.tree-node-content {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.tree-node-label {
   font-weight: 500;
 }
 
-.permission-tag {
-  margin-top: 3px;
+.tree-node-tag {
+  font-size: 12px;
+  height: 22px;
+  line-height: 20px;
+}
+
+.tree-node-desc {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-left: 4px;
+}
+
+.permission-footer {
+  padding: 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.permission-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
 }
 
 .permission-table {
@@ -1001,6 +1188,16 @@ const saveRolePermissions = async () => {
 
   .action-cell {
     flex-wrap: wrap;
+  }
+
+  .permission-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .permission-actions {
+    justify-content: space-between;
+    margin-top: 10px;
   }
 }
 </style>

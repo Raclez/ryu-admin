@@ -12,11 +12,11 @@ export namespace PermissionApi {
     /** 权限名称关键字 */
     name?: string;
     /** 权限标识关键字 */
-    permission?: string;
-    /** 菜单ID */
-    menuId?: string;
+    identity?: string;
+    /** 模块名称 */
+    module?: string;
     /** 状态 */
-    status?: number;
+    isActive?: number;
   }
 
   /**
@@ -28,19 +28,13 @@ export namespace PermissionApi {
     /** 权限名称 */
     name: string;
     /** 权限标识 */
-    permission: string;
-    /** 菜单ID */
-    menuId?: string;
-    /** 菜单名称 */
-    menuName?: string;
+    identity: string;
+    /** 模块名称 */
+    module?: string;
     /** 状态(0-禁用,1-启用) */
-    status?: number;
+    isActive?: number;
     /** 描述 */
     description?: string;
-    /** 排序 */
-    orderNo?: number;
-    /** 权限类型(1-菜单,2-按钮,3-接口) */
-    type?: number;
     /** 创建时间 */
     createTime?: string;
     /** 更新时间 */
@@ -56,18 +50,31 @@ export namespace PermissionApi {
     /** 权限名称 */
     name: string;
     /** 权限标识 */
-    permission: string;
-    /** 菜单ID */
-    menuId?: string;
+    identity: string;
+    /** 模块名称 */
+    module?: string;
     /** 状态(0-禁用,1-启用) */
-    status?: number;
+    isActive?: number;
     /** 描述 */
     description?: string;
-    /** 排序 */
-    orderNo?: number;
-    /** 权限类型(1-菜单,2-按钮,3-接口) */
-    type?: number;
   }
+}
+
+/**
+ * 获取所有权限列表
+ * @returns 权限数据列表
+ */
+export async function getAllPermissions(): Promise<PermissionApi.Permission[]> {
+  return requestClient.get('/ryu-user/permissions/list');
+}
+
+/**
+ * 按模块获取权限列表
+ * @param module 模块名称
+ * @returns 权限数据列表
+ */
+export async function getPermissionsByModule(module: string): Promise<PermissionApi.Permission[]> {
+  return requestClient.get(`/ryu-user/permissions/module/${module}`);
 }
 
 /**
@@ -112,7 +119,20 @@ export async function deletePermission(id: string): Promise<boolean> {
  * @returns 删除结果
  */
 export async function batchDeletePermission(ids: string[]): Promise<boolean> {
-  return requestClient.post('/ryu-user/permissions/batch', ids);
+  return requestClient.post('/ryu-user/permissions/batch/delete', ids);
+}
+
+/**
+ * 批量更新权限状态
+ * @param ids 权限ID数组
+ * @param isActive 状态(0-禁用,1-启用)
+ * @returns 更新结果
+ */
+export async function batchUpdatePermissionStatus(ids: string[], isActive: number): Promise<boolean> {
+  return requestClient.put('/ryu-user/permissions/status', {
+    ids,
+    isActive
+  });
 }
 
 /**
@@ -121,4 +141,30 @@ export async function batchDeletePermission(ids: string[]): Promise<boolean> {
  */
 export async function getPermissionTree(): Promise<PermissionApi.Permission[]> {
   return requestClient.get('/ryu-user/permissions/tree');
+}
+
+/**
+ * 获取系统模块列表
+ * @returns 模块列表
+ */
+export async function getSystemModules(): Promise<string[]> {
+  return requestClient.get('/ryu-user/permissions/modules');
+}
+
+/**
+ * 获取指定菜单的权限列表
+ * @param menuId 菜单ID
+ * @returns 权限列表
+ */
+export async function getPermissionsByMenuId(menuId: string): Promise<PermissionApi.Permission[]> {
+  return requestClient.get(`/ryu-user/permissions/menu/${menuId}`);
+}
+
+/**
+ * 获取指定角色的权限列表
+ * @param roleId 角色ID
+ * @returns 权限列表
+ */
+export async function getPermissionsByRoleId(roleId: string): Promise<PermissionApi.Permission[]> {
+  return requestClient.get(`/ryu-user/permissions/role/${roleId}`);
 }

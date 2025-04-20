@@ -9,10 +9,22 @@
                     size="large"></el-input>
         </el-form-item>
         <el-form-item class="form-item">
+          <el-input v-model="searchForm.identity" clearable placeholder="请输入权限标识"
+                    prefix-icon="Key"
+                    size="large"></el-input>
+        </el-form-item>
+        <el-form-item class="form-item">
           <el-select v-model="searchForm.module" class="full-width-input" clearable
                      placeholder="请选择模块">
-            <el-option v-for="item in moduleOptions" :key="item.id" :label="item.dictItemValue"
-                       :value="item.id"></el-option>
+            <el-option v-for="item in moduleOptions" :key="item" :label="item"
+                       :value="item"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item class="form-item">
+          <el-select v-model="searchForm.isActive" class="full-width-input" clearable
+                     placeholder="状态">
+            <el-option :label="'启用'" :value="1"></el-option>
+            <el-option :label="'禁用'" :value="0"></el-option>
           </el-select>
         </el-form-item>
 
@@ -28,6 +40,20 @@
               <el-button :disabled="loading" :icon="Delete" type="danger"
                          @click="handleBatchDelete">批量删除
               </el-button>
+              <el-dropdown>
+                <el-button>
+                  批量操作
+                  <el-icon class="el-icon--right">
+                    <arrow-down/>
+                  </el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click="handleBatchStatus(1)">批量启用</el-dropdown-item>
+                    <el-dropdown-item @click="handleBatchStatus(0)">批量禁用</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </div>
         </el-form-item>
@@ -81,10 +107,20 @@
             <el-tag size="small" type="success">{{ scope.row.module }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column align="center" label="状态" min-width="80">
+          <template #default="scope">
+            <el-switch
+              v-model="scope.row.isActive"
+              :active-value="1"
+              :inactive-value="0"
+              @change="handleStatusChange(scope.row)"
+            />
+          </template>
+        </el-table-column>
         <el-table-column align="center" label="权限描述" min-width="180" prop="description"
                          show-overflow-tooltip/>
-        <el-table-column :class-name="isMobile ? 'hidden-xs-only' : ''" :formatter="formatDate"
-                         align="center" label="创建时间"
+        <el-table-column :class-name="isMobile ? 'hidden-xs-only' : ''" align="center"
+                         label="创建时间"
                          min-width="160" prop="createTime"/>
         <el-table-column align="center" fixed="right" label="操作" width="160">
           <template #default="scope">
@@ -166,8 +202,8 @@
         <el-form-item label="所属模块" prop="module">
           <el-select v-model="permissionForm.module" class="full-width-input"
                      placeholder="请选择模块">
-            <el-option v-for="item in moduleOptions" :key="item.id" :label="item.dictItemValue"
-                       :value="item.id"></el-option>
+            <el-option v-for="item in moduleOptions" :key="item" :label="item"
+                       :value="item"></el-option>
             <el-option label="+ 添加新模块" value="add_new"></el-option>
           </el-select>
         </el-form-item>
@@ -175,6 +211,15 @@
                       prop="newModule">
           <el-input v-model="permissionForm.newModule" class="full-width-input"
                     placeholder="请输入新模块名称"></el-input>
+        </el-form-item>
+        <el-form-item label="状态" prop="isActive">
+          <el-switch
+            v-model="permissionForm.isActive"
+            :active-value="1"
+            :inactive-value="0"
+            active-text="启用"
+            inactive-text="禁用"
+          ></el-switch>
         </el-form-item>
         <el-form-item label="权限描述" prop="description">
           <el-input
@@ -203,11 +248,17 @@
 <script setup>
 import {ref, reactive, onMounted, computed} from 'vue';
 import {ElMessage, ElMessageBox} from 'element-plus';
-import {deletePermission, getPermissionByCondition} from "#/api/core/permission.js";
-import {Search, Refresh, Plus, Edit, Delete, Filter, Key} from "@element-plus/icons-vue";
+import {
+  deletePermission,
+  getPermissionByCondition,
+  addPermission,
+  updatePermission,
+  batchDeletePermission,
+  batchUpdatePermissionStatus,
+  getSystemModules
+} from "#/api/core/permission";
+import {Search, Refresh, Plus, Edit, Delete, Filter, Key, ArrowDown} from "@element-plus/icons-vue";
 import {useWindowSize} from '@vueuse/core';
-import {getDictItemsByContidion} from "#/api/core/dictItem.js";
-
 
 // 响应式检测窗口大小
 const {width} = useWindowSize();
@@ -248,7 +299,8 @@ const moduleOptions = ref([]);
 const searchForm = reactive({
   name: '',
   identity: '',
-  module: ''
+  module: '',
+  isActive: ''
 });
 
 // 分页数据
@@ -268,6 +320,7 @@ const permissionForm = reactive({
   identity: '',
   module: '',
   newModule: '',
+  isActive: 1,
   description: ''
 });
 // 选中的权限
@@ -278,17 +331,14 @@ const handleSelectionChange = (selection) => {
   selectedPermissions.value = selection;
 };
 
-const fetchDictModule = async () => {
+// 获取模块列表
+const fetchModules = async () => {
   try {
-    const params = {
-      key: 'PERMISSION_MODULE'
-    }
-    moduleOptions.value = await getDictItemsByContidion(params);
+    moduleOptions.value = await getSystemModules();
   } catch (error) {
-    console.error('获取模块选项出错:', error);
+    console.error('获取模块列表出错:', error);
   }
 }
-
 
 // 批量删除
 const handleBatchDelete = () => {
@@ -304,22 +354,84 @@ const handleBatchDelete = () => {
     }
   ).then(async () => {
     try {
-      selectedPermissions.value.forEach((items) => {
-        console.log(items.id)
-        deletePermission(items.id)
-      })
-
+      loading.value = true;
+      const ids = selectedPermissions.value.map(item => item.id);
+      await batchDeletePermission(ids);
       ElMessage.success('批量删除成功');
       selectedPermissions.value = [];
       await getPermissionList();
     } catch (error) {
       console.error('批量删除失败', error);
       ElMessage.error('批量删除失败');
+    } finally {
+      loading.value = false;
     }
   }).catch(() => {
   });
 };
 
+// 批量更新状态
+const handleBatchStatus = async (status) => {
+  if (!selectedPermissions.value.length) return;
+
+  const statusText = status === 1 ? '启用' : '禁用';
+
+  ElMessageBox.confirm(
+    `确定要批量${statusText}选中的 ${selectedPermissions.value.length} 个权限吗？`,
+    '警告',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(async () => {
+    try {
+      loading.value = true;
+      const ids = selectedPermissions.value.map(item => item.id);
+      await batchUpdatePermissionStatus(ids, status);
+      ElMessage.success(`批量${statusText}成功`);
+
+      // 更新当前列表数据状态
+      selectedPermissions.value.forEach(item => {
+        const listItem = permissionList.value.find(p => p.id === item.id);
+        if (listItem) {
+          listItem.isActive = status;
+        }
+      });
+
+      selectedPermissions.value = [];
+    } catch (error) {
+      console.error(`批量${statusText}失败`, error);
+      ElMessage.error(`批量${statusText}失败`);
+    } finally {
+      loading.value = false;
+    }
+  }).catch(() => {
+  });
+};
+
+// 处理权限状态修改
+const handleStatusChange = async (row) => {
+  try {
+    loading.value = true;
+    await updatePermission({
+      id: row.id,
+      name: row.name,
+      identity: row.identity,
+      module: row.module,
+      isActive: row.isActive,
+      description: row.description
+    });
+    ElMessage.success('状态修改成功');
+  } catch (error) {
+    console.error('状态修改失败', error);
+    ElMessage.error('状态修改失败');
+    // 回滚状态
+    row.isActive = row.isActive === 1 ? 0 : 1;
+  } finally {
+    loading.value = false;
+  }
+};
 
 // 表单验证规则
 const permissionRules = reactive({
@@ -329,11 +441,11 @@ const permissionRules = reactive({
   ],
   identity: [
     {required: true, message: '请输入权限标识', trigger: 'blur'},
-    // {
-    //   pattern: /^[a-z0-9_]+(\.[a-z0-9_]+)*$/,
-    //   message: '格式不正确，请使用小写字母、数字、下划线，可用点号分隔',
-    //   trigger: 'blur'
-    // }
+    {
+      pattern: /^[a-z0-9_]+(\:[a-z0-9_]+)*$/,
+      message: '格式不正确，请使用小写字母、数字、下划线，可用冒号分隔',
+      trigger: 'blur'
+    }
   ],
   module: [
     {required: true, message: '请选择所属模块', trigger: 'change'}
@@ -357,7 +469,6 @@ const permissionRules = reactive({
   ]
 });
 
-
 const getPermissionList = async () => {
   loading.value = true;
   try {
@@ -366,14 +477,14 @@ const getPermissionList = async () => {
       pageSize: pagination.pageSize,
       name: searchForm.name,
       identity: searchForm.identity,
-      module: searchForm.module
+      module: searchForm.module,
+      isActive: searchForm.isActive
     };
-    const res = await getPermissionByCondition(params)
+    const res = await getPermissionByCondition(params);
     permissionList.value = res.records;
     pagination.total = res.total;
     pagination.currentPage = res.current;
     pagination.pageSize = res.size;
-
   } catch (error) {
     console.error('获取权限列表失败', error);
     ElMessage.error('获取权限列表失败');
@@ -382,16 +493,15 @@ const getPermissionList = async () => {
   }
 };
 
-// 格式化日期显示
-const formatDate = (row, column) => {
-  return row[column.property];
-};
-
 // 添加权限按钮
 const handleAddPermission = () => {
   dialogType.value = 'add';
   Object.keys(permissionForm).forEach(key => {
-    permissionForm[key] = '';
+    if (key === 'isActive') {
+      permissionForm[key] = 1;
+    } else {
+      permissionForm[key] = '';
+    }
   });
   dialogVisible.value = true;
 };
@@ -399,10 +509,13 @@ const handleAddPermission = () => {
 // 编辑权限
 const handleEdit = (row) => {
   dialogType.value = 'edit';
-  Object.keys(permissionForm).forEach(key => {
-    if (key !== 'newModule') {
-      permissionForm[key] = row[key];
-    }
+  Object.assign(permissionForm, {
+    id: row.id,
+    name: row.name,
+    identity: row.identity,
+    module: row.module,
+    isActive: row.isActive === undefined ? 1 : row.isActive,
+    description: row.description || ''
   });
   dialogVisible.value = true;
 };
@@ -419,12 +532,15 @@ const handleDelete = (row) => {
     }
   ).then(async () => {
     try {
-      await deletePermission(row.id)
+      loading.value = true;
+      await deletePermission(row.id);
       ElMessage.success('删除成功');
       await getPermissionList();
     } catch (error) {
       console.error('删除权限失败', error);
       ElMessage.error('删除权限失败');
+    } finally {
+      loading.value = false;
     }
   }).catch(() => {
   });
@@ -437,26 +553,39 @@ const handleSubmitPermission = async () => {
   await permissionFormRef.value.validate(async (valid) => {
     if (valid) {
       try {
-        const finalForm = {...permissionForm};
+        loading.value = true;
+        const finalForm = {
+          name: permissionForm.name,
+          identity: permissionForm.identity,
+          isActive: permissionForm.isActive,
+          description: permissionForm.description
+        };
 
         // 处理新增模块的情况
-        if (finalForm.module === 'add_new' && finalForm.newModule) {
-          finalForm.module = finalForm.newModule;
+        if (permissionForm.module === 'add_new' && permissionForm.newModule) {
+          finalForm.module = permissionForm.newModule;
           if (!moduleOptions.value.includes(finalForm.module)) {
             moduleOptions.value.push(finalForm.module);
           }
+        } else {
+          finalForm.module = permissionForm.module;
         }
-        delete finalForm.newModule;
 
-        // 这里替换为实际的API调用
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        ElMessage.success(dialogType.value === 'add' ? '添加成功' : '更新成功');
+        if (dialogType.value === 'edit') {
+          finalForm.id = permissionForm.id;
+          await updatePermission(finalForm);
+          ElMessage.success('更新成功');
+        } else {
+          await addPermission(finalForm);
+          ElMessage.success('添加成功');
+        }
         dialogVisible.value = false;
         await getPermissionList();
       } catch (error) {
         console.error('提交权限数据失败', error);
         ElMessage.error('操作失败，请重试');
+      } finally {
+        loading.value = false;
       }
     }
   });
@@ -491,7 +620,7 @@ const handleCurrentChange = (val) => {
 
 // 初始化
 onMounted(() => {
-  fetchDictModule()
+  fetchModules();
   getStoredFilterStatus();
   getPermissionList();
 });
