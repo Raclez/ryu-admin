@@ -275,6 +275,54 @@ export default defineConfig;' > internal/vite-config/dist/index.d.ts
                         ls -la apps/web-ele/node_modules/@vben/ || echo "无法查看链接结果"
                     '''
                     
+                    // 准备tailwind-config包
+                    sh '''
+                        # 准备tailwind-config包
+                        echo "准备tailwind-config包..."
+                        
+                        mkdir -p internal/tailwind-config/dist
+                        
+                        # 创建postcss.config.mjs
+                        cat > internal/tailwind-config/dist/postcss.config.mjs << 'EOL'
+import tailwindcss from 'tailwindcss';
+import autoprefixer from 'autoprefixer';
+
+export default {
+  plugins: [
+    tailwindcss(),
+    autoprefixer()
+  ]
+};
+EOL
+                        
+                        # 创建tailwind.config.js
+                        cat > internal/tailwind-config/dist/tailwind.config.js << 'EOL'
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{vue,js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+EOL
+                        
+                        # 确保目标目录存在
+                        mkdir -p apps/web-ele/node_modules/@vben
+                        # 软链接到apps/web-ele
+                        ln -sf $(pwd)/internal/tailwind-config apps/web-ele/node_modules/@vben/ || true
+                        
+                        # 显示链接结果
+                        ls -la internal/tailwind-config/dist/
+                        ls -la apps/web-ele/node_modules/@vben/ || echo "无法查看链接结果"
+                        
+                        # 直接复制postcss.config.mjs到apps/web-ele目录
+                        cp internal/tailwind-config/dist/postcss.config.mjs apps/web-ele/
+                    '''
+                    
                     // 创建web-ele的.env.production文件，配置压缩和路由
                     sh """
                         mkdir -p apps/web-ele
