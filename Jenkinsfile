@@ -149,23 +149,36 @@ pipeline {
                     // 安装依赖
                     sh 'pnpm install --frozen-lockfile || pnpm install'
                     
-                    // 执行构建 - 根据Vben Admin的文档
-                    try {
-                        sh 'pnpm build'
-                        
-                        // 如果需要构建分析报告
-                        if (params.TARGET_ENV == 'production') {
-                            sh 'pnpm run build:analyze || echo "跳过构建分析"'
-                        }
-                    } catch (Exception e) {
-                        echo "标准构建失败，尝试备用方案: ${e.message}"
-                        sh 'pnpm vite build --mode production'
-                    }
+                    // 执行构建 - 优先构建apps/web-ele目录
+                    sh '''
+                        # 优先检查web-ele目录
+                        if [ -d "apps/web-ele" ] && [ -f "apps/web-ele/index.html" ]; then
+                            echo "在 apps/web-ele 目录中构建..."
+                            cd apps/web-ele && pnpm build
+                        elif [ -d "playground" ] && [ -f "playground/index.html" ]; then
+                            echo "在 playground 目录中构建..."
+                            cd playground && pnpm build
+                        elif [ -f "pnpm-workspace.yaml" ]; then
+                            echo "使用工作空间过滤器构建..."
+                            pnpm --filter="./apps/web-ele" build || pnpm --filter="./playground" build
+                        else
+                            echo "尝试查找包含index.html的目录..."
+                            INDEX_DIR=$(find . -name "index.html" -not -path "*node_modules*" -not -path "*dist*" | head -1 | xargs dirname)
+                            if [ ! -z "$INDEX_DIR" ]; then
+                                echo "在 $INDEX_DIR 目录中构建..."
+                                cd $INDEX_DIR && pnpm build || cd $INDEX_DIR && pnpm vite build
+                            else
+                                echo "找不到入口文件，尝试直接构建子项目..."
+                                pnpm -r build
+                            fi
+                        fi
+                    '''
 
                     // 确认构建结果
-                    sh 'ls -la dist || echo "未找到dist目录，正在检查其他可能位置"'
-                    sh 'ls -la apps/web-antd/dist || echo "未找到apps/web-antd/dist目录"'
-                    sh 'ls -la playground/dist || echo "未找到playground/dist目录"'
+                    sh '''
+                        echo "查找构建产物..."
+                        find . -name "dist" -type d | grep -v "node_modules" || echo "未找到dist目录"
+                    '''
                 }
             }
         }
@@ -178,17 +191,17 @@ pipeline {
                         // 登录Docker仓库
                         sh "echo ${DOCKER_PASSWORD} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USERNAME} --password-stdin"
 
-                        // 确保dist目录存在于正确位置
+                        // 确保dist目录存在于正确位置，优先使用web-ele的构建结果
                         sh '''
                             # 查找dist目录并复制到根目录
                             if [ -d "dist" ]; then
                                 echo "dist目录已存在于根目录"
+                            elif [ -d "apps/web-ele/dist" ]; then
+                                echo "复制apps/web-ele/dist到根目录..."
+                                cp -r apps/web-ele/dist dist
                             elif [ -d "playground/dist" ]; then
                                 echo "复制playground/dist到根目录..."
                                 cp -r playground/dist dist
-                            elif [ -d "apps/web-antd/dist" ]; then
-                                echo "复制apps/web-antd/dist到根目录..."
-                                cp -r apps/web-antd/dist dist
                             else
                                 echo "创建最小的dist目录..."
                                 mkdir -p dist
