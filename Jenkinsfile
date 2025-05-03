@@ -172,19 +172,34 @@ COPY . .
 # 安装依赖
 RUN pnpm install --frozen-lockfile || pnpm install
 
+# 修复重复parentId问题
+RUN if [ -f "apps/web-ele/src/views/features/menu/MenuList.vue" ]; then \\
+      sed -i '/parentId: selectedParent.value,/d' apps/web-ele/src/views/features/menu/MenuList.vue; \\
+    fi
+
+# 配置Vite以支持ES2022和顶级await
+RUN if [ -f "apps/web-ele/vite.config.mts" ]; then \\
+      sed -i 's/target:.*es2020.*/target: \\"es2022\\"/' apps/web-ele/vite.config.mts; \\
+    fi
+
+# 添加别名配置以解决@vben-core包引用问题
+RUN if [ -f "apps/web-ele/vite.config.mts" ]; then \\
+      sed -i '/build: {/a\\\n        resolve: {\\\n          alias: {\\\n            \\"@vben-core/tabs-ui\\": fileURLToPath(new URL(\\"../../packages/@core/ui-kit/tabs-ui/src/index.ts\\", import.meta.url)),\\\n            \\"@vben-core/icons\\": fileURLToPath(new URL(\\"../../packages/@core/base/icons/src/index.ts\\", import.meta.url)),\\\n            \\"@vben-core/composables\\": fileURLToPath(new URL(\\"../../packages/@core/composables/src/index.ts\\", import.meta.url))\\\n          }\\\n        },' apps/web-ele/vite.config.mts; \\
+    fi
+
 # 尝试构建web-ele
-RUN if [ -d "apps/web-ele" ]; then \
-      cd apps/web-ele && pnpm build || echo "Web-ele构建失败"; \
+RUN if [ -d "apps/web-ele" ]; then \\
+      cd apps/web-ele && pnpm build || echo "Web-ele构建失败"; \\
     fi
 
 # 尝试构建playground
-RUN if [ -d "playground" ]; then \
-      cd playground && pnpm build || echo "Playground构建失败"; \
+RUN if [ -d "playground" ]; then \\
+      cd playground && pnpm build || echo "Playground构建失败"; \\
     fi
 
 # 如果没有构建成功，创建一个静态页面
-RUN if [ ! -d "apps/web-ele/dist" ] && [ ! -d "playground/dist" ]; then \
-      mkdir -p static-html; \
+RUN if [ ! -d "apps/web-ele/dist" ] && [ ! -d "playground/dist" ]; then \\
+      mkdir -p static-html; \\
       echo "<!DOCTYPE html>
 <html lang=\"zh-CN\">
 <head>
@@ -210,7 +225,7 @@ RUN if [ ! -d "apps/web-ele/dist" ] && [ ! -d "playground/dist" ]; then \
         <footer>Powered by Vben Admin</footer>
     </div>
 </body>
-</html>" > static-html/index.html; \
+</html>" > static-html/index.html; \\
     fi
 
 # 第二阶段: 生产环境

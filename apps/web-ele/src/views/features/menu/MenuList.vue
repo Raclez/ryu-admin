@@ -908,7 +908,6 @@ const handleSubmit = async () => {
           menuType: currentMenu.menuType,
           permission: selectedPermissionIds.value.join(','),
           isActive: currentMenu.isActive,
-          parentId: selectedParent.value,
         };
 
         if (isEdit.value && currentMenu.id) {
@@ -1579,7 +1578,7 @@ onMounted(() => {
 }
 
 .create-permission-option {
-  border-top: 1px dashed #e0e0e0;
+  border-top: 1px dashed var(--el-border-color-lighter);
   padding-top: 8px;
   color: var(--el-color-primary);
   cursor: pointer;

@@ -5,7 +5,6 @@ import {
   ArrowUp,
   CaretRight,
   Connection,
-  CPU,
   DocumentCopy,
   Lock,
   Refresh,
