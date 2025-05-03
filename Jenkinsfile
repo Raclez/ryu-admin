@@ -12,6 +12,18 @@ pipeline {
             defaultValue: false,
             description: '跳过构建步骤（用于重新部署已有镜像）'
         )
+        choice(
+            name: 'COMPRESS_MODE',
+            choices: ['none', 'gzip', 'brotli', 'gzip,brotli'],
+            defaultValue: 'gzip',
+            description: '选择压缩模式'
+        )
+        choice(
+            name: 'ROUTER_MODE',
+            choices: ['hash', 'history'],
+            defaultValue: 'hash',
+            description: '路由模式'
+        )
     }
 
     environment {
@@ -72,18 +84,22 @@ pipeline {
                         env.CURRENT_PORT_MAPPING = env.PORT_MAPPING_DEV
                         env.CURRENT_API_BASE_URL = env.API_BASE_URL_DEV
                         env.CURRENT_API_GATEWAY = env.API_GATEWAY_DEV
+                        env.VITE_BASE = '/'
                     } else if (params.TARGET_ENV == 'test') {
                         env.CURRENT_PORT_MAPPING = env.PORT_MAPPING_TEST
                         env.CURRENT_API_BASE_URL = env.API_BASE_URL_TEST
                         env.CURRENT_API_GATEWAY = env.API_GATEWAY_TEST
+                        env.VITE_BASE = '/'
                     } else if (params.TARGET_ENV == 'staging') {
                         env.CURRENT_PORT_MAPPING = env.PORT_MAPPING_STAGING
                         env.CURRENT_API_BASE_URL = env.API_BASE_URL_STAGING
                         env.CURRENT_API_GATEWAY = env.API_GATEWAY_STAGING
+                        env.VITE_BASE = '/'
                     } else if (params.TARGET_ENV == 'production') {
                         env.CURRENT_PORT_MAPPING = env.PORT_MAPPING_PROD
                         env.CURRENT_API_BASE_URL = env.API_BASE_URL_PROD
                         env.CURRENT_API_GATEWAY = env.API_GATEWAY_PROD
+                        env.VITE_BASE = '/'
                     }
 
                     echo "开始构建 ${PROJECT_NAME}"
@@ -92,6 +108,8 @@ pipeline {
                     echo "端口映射: ${env.CURRENT_PORT_MAPPING}"
                     echo "API基础URL: ${env.CURRENT_API_BASE_URL}"
                     echo "API网关服务: ${env.CURRENT_API_GATEWAY}"
+                    echo "压缩模式: ${params.COMPRESS_MODE}"
+                    echo "路由模式: ${params.ROUTER_MODE}"
                 }
             }
         }
@@ -99,6 +117,25 @@ pipeline {
         stage('检出代码') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('创建环境变量文件') {
+            when { expression { return !params.SKIP_BUILD } }
+            steps {
+                script {
+                    // 为生产环境创建.env.production文件
+                    sh """
+                        echo "# 环境变量 - 由Jenkins生成" > .env.production
+                        echo "VITE_GLOB_APP_TITLE=${PROJECT_NAME}" >> .env.production
+                        echo "VITE_GLOB_API_URL=${env.CURRENT_API_BASE_URL}" >> .env.production
+                        echo "VITE_COMPRESS=${params.COMPRESS_MODE}" >> .env.production
+                        echo "VITE_ROUTER_HISTORY=${params.ROUTER_MODE}" >> .env.production
+                        echo "VITE_BASE=${env.VITE_BASE}" >> .env.production
+                        
+                        cat .env.production
+                    """
+                }
             }
         }
 
@@ -111,163 +148,26 @@ pipeline {
                     sh 'pnpm -v'
                     sh 'node -v'
 
-                    // 准备构建环境 - 直接安装全局依赖项
-                    sh '''
-                        # 安装全局构建工具
-                        npm install -g unbuild
-                    '''
-
-                    // 安装依赖 - 使用递归方式安装，确保所有工作空间的包都被安装
-                    sh 'pnpm install --recursive --frozen-lockfile || pnpm install --recursive'
+                    // 安装依赖
+                    sh 'pnpm install --frozen-lockfile || pnpm install'
                     
-                    // 查看工作空间结构
-                    sh 'cat pnpm-workspace.yaml'
-                    
-                    // 在全部构建前确保内部配置包可用
-                    sh '''
-                        echo "准备必要的内部配置包..."
-                        
-                        # 复制tsconfig文件到正确位置
-                        if [ -d "internal/tsconfig" ]; then
-                            echo "准备tsconfig包..."
-                            
-                            # 确保文件存在
-                            if [ ! -f "internal/tsconfig/web-app.json" ]; then
-                                echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Web Application","extends":"./web.json","compilerOptions":{"types":["vite/client"]}}' > internal/tsconfig/web-app.json
-                            fi
-                            
-                            if [ ! -f "internal/tsconfig/web.json" ]; then
-                                echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Web","extends":"./base.json","compilerOptions":{"lib":["ESNext","DOM","DOM.Iterable"],"jsx":"preserve","resolveJsonModule":true}}' > internal/tsconfig/web.json
-                            fi
-                            
-                            if [ ! -f "internal/tsconfig/base.json" ]; then
-                                echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Base","compilerOptions":{"target":"ESNext","useDefineForClassFields":true,"module":"ESNext","moduleResolution":"bundler","allowImportingTsExtensions":true,"strict":true,"noFallthroughCasesInSwitch":true,"skipLibCheck":true,"noEmit":true}}' > internal/tsconfig/base.json
-                            fi
-                            
-                            # 软链接到playground
-                            mkdir -p playground/node_modules/@vben
-                            ln -sf $(pwd)/internal/tsconfig playground/node_modules/@vben/ || true
-                        fi
-                        
-                        # 准备vite-config包
-                        if [ -d "internal/vite-config" ]; then
-                            echo "准备vite-config包..."
-                            
-                            # 创建简单的dist目录和文件
-                            mkdir -p internal/vite-config/dist
-                            
-                            if [ ! -f "internal/vite-config/dist/index.mjs" ]; then
-                                echo 'import { defineConfig as defineViteConfig } from "vite";
-                                import vue from "@vitejs/plugin-vue";
-                                import vueJsx from "@vitejs/plugin-vue-jsx";
-                                
-                                export function defineConfig(config) {
-                                  return defineViteConfig({
-                                    plugins: [vue(), vueJsx()],
-                                    build: {
-                                      outDir: "dist",
-                                      minify: true
-                                    },
-                                    ...config?.vite
-                                  });
-                                }
-                                
-                                export default defineConfig;' > internal/vite-config/dist/index.mjs
-                            fi
-                            
-                            # 模拟类型
-                            if [ ! -f "internal/vite-config/dist/index.d.ts" ]; then
-                                echo 'import { UserConfig as ViteUserConfig } from "vite";
-                                
-                                export interface UserConfig {
-                                  application?: Record<string, any>;
-                                  vite?: ViteUserConfig;
-                                }
-                                
-                                export function defineConfig(config?: UserConfig): ViteUserConfig;
-                                
-                                export default defineConfig;' > internal/vite-config/dist/index.d.ts
-                            fi
-                            
-                            # 软链接到playground
-                            ln -sf $(pwd)/internal/vite-config playground/node_modules/@vben/ || true
-                        fi
-                    '''
-                    
-                    // 创建自定义的vite配置
-                    sh '''
-                        echo "创建简化的vite配置..."
-                        cd playground
-                        
-                        # 创建简化的vite配置
-                        echo 'import { defineConfig } from "vite";
-                        import vue from "@vitejs/plugin-vue";
-                        import vueJsx from "@vitejs/plugin-vue-jsx";
-                        
-                        export default defineConfig({
-                          plugins: [vue(), vueJsx()],
-                          resolve: {
-                            alias: {
-                              "#": new URL("./src", import.meta.url).pathname
-                            }
-                          },
-                          build: {
-                            outDir: "dist",
-                            minify: true
-                          }
-                        });' > vite.config.simple.js
-                    '''
-                    
-                    // 执行构建
+                    // 执行构建 - 根据Vben Admin的文档
                     try {
-                        sh '''
-                            cd playground
-                            echo "尝试构建playground..."
-                            
-                            # 尝试不同的构建命令
-                            pnpm run build || pnpm vite build || pnpm vite build --config vite.config.simple.js
-                        '''
+                        sh 'pnpm build'
+                        
+                        // 如果需要构建分析报告
+                        if (params.TARGET_ENV == 'production') {
+                            sh 'pnpm run build:analyze || echo "跳过构建分析"'
+                        }
                     } catch (Exception e) {
-                        echo "构建失败: ${e.message}"
-                        
-                        // 尝试使用简化配置构建
-                        sh '''
-                            cd playground
-                            echo "尝试使用简化配置构建..."
-                            VITE_GLOB_APP_TITLE=Vue-Vben-Admin pnpm vite build --config vite.config.simple.js || echo "简化构建也失败了"
-                        '''
-                        
-                        // 创建一个最小的页面
-                        sh '''
-                            echo "创建一个最小的构建页面..."
-                            mkdir -p playground/dist
-                            echo "<!DOCTYPE html>
-                            <html>
-                            <head>
-                                <meta charset='UTF-8'>
-                                <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-                                <title>Vue Vben Admin</title>
-                                <style>
-                                    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-                                    h1 { color: #333; }
-                                    .message { background: #f8f8f8; padding: 20px; border-radius: 5px; border-left: 5px solid #42b983; }
-                                    .time { color: #666; font-size: 14px; margin-top: 20px; }
-                                </style>
-                            </head>
-                            <body>
-                                <h1>Vue Vben Admin</h1>
-                                <div class='message'>
-                                    <p>构建过程遇到问题，已创建临时页面。</p>
-                                    <p>环境: ${TARGET_ENV}</p>
-                                </div>
-                                <p class='time'>部署时间: $(date)</p>
-                            </body>
-                            </html>" > playground/dist/index.html
-                        '''
+                        echo "标准构建失败，尝试备用方案: ${e.message}"
+                        sh 'pnpm vite build --mode production'
                     }
 
                     // 确认构建结果
-                    sh 'ls -la playground/dist || echo "未找到构建产物"'
+                    sh 'ls -la dist || echo "未找到dist目录，正在检查其他可能位置"'
+                    sh 'ls -la apps/web-antd/dist || echo "未找到apps/web-antd/dist目录"'
+                    sh 'ls -la playground/dist || echo "未找到playground/dist目录"'
                 }
             }
         }
@@ -276,18 +176,21 @@ pipeline {
             when { expression { return !params.SKIP_BUILD } }
             steps {
                 script {
-                    // 使用项目自带的Dockerfile
                     withCredentials([usernamePassword(credentialsId: "${DOCKER_REGISTRY_CREDENTIALS}", passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
                         // 登录Docker仓库
                         sh "echo ${DOCKER_PASSWORD} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USERNAME} --password-stdin"
 
                         // 确保dist目录存在于正确位置
                         sh '''
-                            if [ -d "playground/dist" ]; then
+                            # 查找dist目录并复制到根目录
+                            if [ -d "dist" ]; then
+                                echo "dist目录已存在于根目录"
+                            elif [ -d "playground/dist" ]; then
                                 echo "复制playground/dist到根目录..."
-                                # 复制到Docker可以找到的位置
-                                rm -rf dist || true
                                 cp -r playground/dist dist
+                            elif [ -d "apps/web-antd/dist" ]; then
+                                echo "复制apps/web-antd/dist到根目录..."
+                                cp -r apps/web-antd/dist dist
                             else
                                 echo "创建最小的dist目录..."
                                 mkdir -p dist
@@ -295,10 +198,52 @@ pipeline {
                             fi
                         '''
                         
-                        // 配置nginx.conf - 替换API网关
-                        sh "sed -i 's|ryu-gateway-prod:8100|${env.CURRENT_API_GATEWAY}|g' scripts/deploy/nginx.conf || echo 'nginx.conf修改失败，可能文件不存在或格式不匹配'"
+                        // 准备nginx配置 - 启用gzip/brotli
+                        sh '''
+                            cp scripts/deploy/nginx.conf nginx.conf.tmp
+                            
+                            # 取消注释gzip相关配置
+                            if [[ "${COMPRESS_MODE}" == *"gzip"* ]]; then
+                                echo "启用gzip压缩..."
+                                sed -i 's/# gzip on;/gzip on;/g' nginx.conf.tmp
+                                sed -i 's/# gzip_buffers/gzip_buffers/g' nginx.conf.tmp
+                                sed -i 's/# gzip_comp_level/gzip_comp_level/g' nginx.conf.tmp
+                                sed -i 's/# gzip_min_length/gzip_min_length/g' nginx.conf.tmp
+                                sed -i 's/# gzip_static/gzip_static/g' nginx.conf.tmp
+                                sed -i 's/# gzip_types/gzip_types/g' nginx.conf.tmp
+                                sed -i 's/# gzip_vary/gzip_vary/g' nginx.conf.tmp
+                            fi
+                            
+                            # 添加brotli支持
+                            if [[ "${COMPRESS_MODE}" == *"brotli"* ]]; then
+                                echo "添加brotli配置..."
+                                cat >> nginx.conf.tmp << EOL
+                            
+# brotli压缩
+brotli on;
+brotli_comp_level 6;
+brotli_buffers 16 8k;
+brotli_min_length 20;
+brotli_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript application/javascript image/svg+xml;
+EOL
+                            fi
+                            
+                            # 修改API网关
+                            sed -i "s|ryu-gateway-prod:8100|${CURRENT_API_GATEWAY}|g" nginx.conf.tmp
+                            
+                            # 更新nginx配置
+                            mv nginx.conf.tmp scripts/deploy/nginx.conf
+                        '''
 
-                        // 构建镜像 - 利用项目提供的Dockerfile
+                        // 配置history路由模式支持
+                        if (params.ROUTER_MODE == 'history') {
+                            sh '''
+                                echo "配置history路由模式..."
+                                sed -i 's|location / {|location / {\n      # 用于配合 History 使用|g' scripts/deploy/nginx.conf
+                            '''
+                        }
+
+                        // 构建镜像
                         sh """
                             docker build --no-cache \
                             -f scripts/deploy/Dockerfile \
@@ -355,6 +300,16 @@ pipeline {
                 }
             }
         }
+        
+        stage('预览部署结果') {
+            steps {
+                script {
+                    def port = env.CURRENT_PORT_MAPPING.split(':')[0]
+                    echo "应用已部署! 您可以通过以下URL访问:"
+                    echo "http://${DEPLOY_SERVER}:${port}/"
+                }
+            }
+        }
     }
 
     post {
@@ -369,6 +324,9 @@ pipeline {
                 <p>项目: ${PROJECT_NAME}</p>
                 <p>环境: ${params.TARGET_ENV}</p>
                 <p>服务器: ${DEPLOY_SERVER}</p>
+                <p>压缩模式: ${params.COMPRESS_MODE}</p>
+                <p>路由模式: ${params.ROUTER_MODE}</p>
+                <p>访问地址: http://${DEPLOY_SERVER}:${env.CURRENT_PORT_MAPPING.split(':')[0]}/</p>
                 """,
                 to: 'admin@example.com',
                 mimeType: 'text/html'
@@ -382,6 +340,8 @@ pipeline {
                 <p>项目: ${PROJECT_NAME}</p>
                 <p>环境: ${params.TARGET_ENV}</p>
                 <p>服务器: ${DEPLOY_SERVER}</p>
+                <p>压缩模式: ${params.COMPRESS_MODE}</p>
+                <p>路由模式: ${params.ROUTER_MODE}</p>
                 <p>详情: <a href='${env.BUILD_URL}'>构建日志</a></p>
                 """,
                 to: 'admin@example.com',
