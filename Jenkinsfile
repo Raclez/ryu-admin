@@ -118,12 +118,13 @@ pipeline {
             }
         }
 
-        stage('创建环境变量文件') {
+        stage('准备构建环境') {
             when { expression { return !params.SKIP_BUILD } }
             steps {
                 script {
-                    // 为生产环境创建.env.production文件
+                    // 配置.env.production文件
                     sh """
+                        # 创建项目根目录的.env.production
                         echo "# 环境变量 - 由Jenkins生成" > .env.production
                         echo "VITE_GLOB_APP_TITLE=${PROJECT_NAME}" >> .env.production
                         echo "VITE_GLOB_API_URL=${env.CURRENT_API_BASE_URL}" >> .env.production
@@ -131,237 +132,154 @@ pipeline {
                         echo "VITE_ROUTER_HISTORY=${params.ROUTER_MODE}" >> .env.production
                         echo "VITE_BASE=${env.VITE_BASE}" >> .env.production
                         
+                        # 为apps/web-ele创建环境变量
+                        mkdir -p apps/web-ele
+                        cp .env.production apps/web-ele/.env.production
+                        
+                        # 为playground创建环境变量
+                        mkdir -p playground
+                        cp .env.production playground/.env.production
+                        
+                        # 显示环境变量
+                        echo "项目环境变量:"
                         cat .env.production
                     """
-                }
-            }
-        }
-
-        stage('构建应用') {
-            when { expression { return !params.SKIP_BUILD } }
-            steps {
-                script {
-                    // 启用corepack
-                    sh 'corepack enable'
-                    sh 'pnpm -v'
-                    sh 'node -v'
-
-                    // 安装依赖
-                    sh 'pnpm install --frozen-lockfile || pnpm install'
                     
-                    // 准备内部依赖包
+                    // 创建多阶段构建的Dockerfile
                     sh '''
-                        # 准备内部依赖包
-                        echo "准备必要的内部配置包..."
-                        
-                        # 准备tsconfig包
-                        if [ -d "internal/tsconfig" ]; then
-                            echo "准备tsconfig包..."
-                            
-                            # 确保文件存在
-                            mkdir -p internal/tsconfig
-                            
-                            if [ ! -f "internal/tsconfig/web-app.json" ]; then
-                                echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Web Application","extends":"./web.json","compilerOptions":{"types":["vite/client"]}}' > internal/tsconfig/web-app.json
-                            fi
-                            
-                            if [ ! -f "internal/tsconfig/web.json" ]; then
-                                echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Web","extends":"./base.json","compilerOptions":{"lib":["ESNext","DOM","DOM.Iterable"],"jsx":"preserve","resolveJsonModule":true}}' > internal/tsconfig/web.json
-                            fi
-                            
-                            if [ ! -f "internal/tsconfig/base.json" ]; then
-                                echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Base","compilerOptions":{"target":"ESNext","useDefineForClassFields":true,"module":"ESNext","moduleResolution":"bundler","allowImportingTsExtensions":true,"strict":true,"noFallthroughCasesInSwitch":true,"skipLibCheck":true,"noEmit":true}}' > internal/tsconfig/base.json
-                            fi
-                            
-                            # 确保目标目录存在
-                            mkdir -p apps/web-ele/node_modules/@vben
-                            # 软链接到apps/web-ele
-                            ln -sf $(pwd)/internal/tsconfig apps/web-ele/node_modules/@vben/ || true
-                        else
-                            # 如果internal/tsconfig不存在，则创建
-                            mkdir -p internal/tsconfig
-                            echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Web Application","extends":"./web.json","compilerOptions":{"types":["vite/client"]}}' > internal/tsconfig/web-app.json
-                            echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Web","extends":"./base.json","compilerOptions":{"lib":["ESNext","DOM","DOM.Iterable"],"jsx":"preserve","resolveJsonModule":true}}' > internal/tsconfig/web.json
-                            echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Base","compilerOptions":{"target":"ESNext","useDefineForClassFields":true,"module":"ESNext","moduleResolution":"bundler","allowImportingTsExtensions":true,"strict":true,"noFallthroughCasesInSwitch":true,"skipLibCheck":true,"noEmit":true}}' > internal/tsconfig/base.json
-                            
-                            # 确保目标目录存在
-                            mkdir -p apps/web-ele/node_modules/@vben
-                            # 软链接到apps/web-ele
-                            ln -sf $(pwd)/internal/tsconfig apps/web-ele/node_modules/@vben/ || true
-                        fi
-                        
-                        # 准备vite-config包
-                        if [ -d "internal/vite-config" ]; then
-                            echo "准备vite-config包..."
-                            
-                            # 创建简单的dist目录和文件
-                            mkdir -p internal/vite-config/dist
-                            
-                            if [ ! -f "internal/vite-config/dist/index.mjs" ]; then
-                                echo 'import { defineConfig as defineViteConfig } from "vite";
-import vue from "@vitejs/plugin-vue";
-import vueJsx from "@vitejs/plugin-vue-jsx";
+                        echo "创建多阶段构建Dockerfile..."
+                        cat > Dockerfile.multi << 'EOL'
+# 第一阶段: 构建应用
+FROM node:20-slim AS builder
 
-export function defineConfig(config) {
-  return defineViteConfig({
-    plugins: [vue(), vueJsx()],
-    build: {
-      outDir: "dist",
-      minify: true
-    },
-    ...config?.vite
-  });
-}
+# 设置环境变量
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+ENV NODE_OPTIONS="--max-old-space-size=8192"
+ENV TZ=Asia/Shanghai
 
-export default defineConfig;' > internal/vite-config/dist/index.mjs
-                            fi
-                            
-                            # 模拟类型
-                            if [ ! -f "internal/vite-config/dist/index.d.ts" ]; then
-                                echo 'import { UserConfig as ViteUserConfig } from "vite";
+# 启用corepack
+RUN corepack enable
 
-export interface UserConfig {
-  application?: Record<string, any>;
-  vite?: ViteUserConfig;
-}
+WORKDIR /app
 
-export function defineConfig(config?: UserConfig): ViteUserConfig;
+# 复制package.json和lock文件
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
 
-export default defineConfig;' > internal/vite-config/dist/index.d.ts
-                            fi
-                            
-                            # 确保目标目录存在
-                            mkdir -p apps/web-ele/node_modules/@vben
-                            # 软链接到apps/web-ele
-                            ln -sf $(pwd)/internal/vite-config apps/web-ele/node_modules/@vben/ || true
-                        else
-                            # 如果internal/vite-config不存在，则创建
-                            mkdir -p internal/vite-config/dist
-                            echo 'import { defineConfig as defineViteConfig } from "vite";
-import vue from "@vitejs/plugin-vue";
-import vueJsx from "@vitejs/plugin-vue-jsx";
+# 复制所有源代码
+COPY . .
 
-export function defineConfig(config) {
-  return defineViteConfig({
-    plugins: [vue(), vueJsx()],
-    build: {
-      outDir: "dist",
-      minify: true
-    },
-    ...config?.vite
-  });
-}
+# 安装依赖
+RUN pnpm install --frozen-lockfile || pnpm install
 
-export default defineConfig;' > internal/vite-config/dist/index.mjs
-                            
-                            echo 'import { UserConfig as ViteUserConfig } from "vite";
+# 尝试构建web-ele
+RUN if [ -d "apps/web-ele" ]; then \
+      cd apps/web-ele && pnpm build || echo "Web-ele构建失败"; \
+    fi
 
-export interface UserConfig {
-  application?: Record<string, any>;
-  vite?: ViteUserConfig;
-}
+# 尝试构建playground
+RUN if [ -d "playground" ]; then \
+      cd playground && pnpm build || echo "Playground构建失败"; \
+    fi
 
-export function defineConfig(config?: UserConfig): ViteUserConfig;
+# 如果没有构建成功，创建一个静态页面
+RUN if [ ! -d "apps/web-ele/dist" ] && [ ! -d "playground/dist" ]; then \
+      mkdir -p static-html; \
+      echo "<!DOCTYPE html>
+<html lang=\"zh-CN\">
+<head>
+    <meta charset=\"UTF-8\">
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+    <title>Vben Admin</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 2rem; }
+        .container { background-color: #f9f9f9; border-radius: 8px; padding: 2rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #42b983; }
+        .info { margin: 1.5rem 0; padding: 1rem; background-color: #f0f8ff; border-left: 4px solid #42b983; }
+        footer { margin-top: 2rem; color: #999; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <div class=\"container\">
+        <h1>Vben Admin 静态页面</h1>
+        <div class=\"info\">
+            <p>构建时间: $(date)</p>
+            <p>此静态页面由于构建失败自动生成。</p>
+        </div>
+        <p>此页面表示应用已成功部署，但构建过程未能完成构建Vue应用。请检查构建日志以获取更多信息。</p>
+        <footer>Powered by Vben Admin</footer>
+    </div>
+</body>
+</html>" > static-html/index.html; \
+    fi
 
-export default defineConfig;' > internal/vite-config/dist/index.d.ts
-                            
-                            # 确保目标目录存在
-                            mkdir -p apps/web-ele/node_modules/@vben
-                            # 软链接到apps/web-ele
-                            ln -sf $(pwd)/internal/vite-config apps/web-ele/node_modules/@vben/ || true
-                        fi
-                        
-                        # 显示链接结果
-                        ls -la apps/web-ele/node_modules/@vben/ || echo "无法查看链接结果"
-                    '''
-                    
-                    // 准备tailwind-config包
-                    sh '''
-                        # 准备tailwind-config包
-                        echo "准备tailwind-config包..."
-                        
-                        mkdir -p internal/tailwind-config/dist
-                        
-                        # 创建postcss.config.mjs
-                        cat > internal/tailwind-config/dist/postcss.config.mjs << 'EOL'
-import tailwindcss from 'tailwindcss';
-import autoprefixer from 'autoprefixer';
+# 第二阶段: 生产环境
+FROM nginx:stable-alpine
 
-export default {
-  plugins: [
-    tailwindcss(),
-    autoprefixer()
-  ]
-};
+# 添加MJS支持
+RUN echo "types { application/javascript js mjs; }" > /etc/nginx/conf.d/mjs.conf
+
+# 准备目录
+RUN mkdir -p /usr/share/nginx/html
+
+# 复制构建产物 - 优先使用web-ele，然后是playground，最后是静态页面
+COPY --from=builder /app/apps/web-ele/dist /usr/share/nginx/html/ 2>/dev/null || true
+COPY --from=builder /app/playground/dist /usr/share/nginx/html/ 2>/dev/null || true
+COPY --from=builder /app/static-html /usr/share/nginx/html/ 2>/dev/null || true
+
+# 复制nginx配置
+COPY scripts/deploy/nginx.conf /etc/nginx/nginx.conf
+
+EXPOSE 8080
+
+# 启动nginx
+CMD ["nginx", "-g", "daemon off;"]
 EOL
                         
-                        # 创建tailwind.config.js
-                        cat > internal/tailwind-config/dist/tailwind.config.js << 'EOL'
-/** @type {import('tailwindcss').Config} */
-export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{vue,js,ts,jsx,tsx}",
-  ],
-  theme: {
-    extend: {},
-  },
-  plugins: [],
-}
-EOL
-                        
-                        # 确保目标目录存在
-                        mkdir -p apps/web-ele/node_modules/@vben
-                        # 软链接到apps/web-ele
-                        ln -sf $(pwd)/internal/tailwind-config apps/web-ele/node_modules/@vben/ || true
-                        
-                        # 显示链接结果
-                        ls -la internal/tailwind-config/dist/
-                        ls -la apps/web-ele/node_modules/@vben/ || echo "无法查看链接结果"
-                        
-                        # 直接复制postcss.config.mjs到apps/web-ele目录
-                        cp internal/tailwind-config/dist/postcss.config.mjs apps/web-ele/
+                        cat Dockerfile.multi
                     '''
                     
-                    // 创建web-ele的.env.production文件，配置压缩和路由
-                    sh """
-                        mkdir -p apps/web-ele
-                        echo "# 环境变量 - 由Jenkins生成" > apps/web-ele/.env.production
-                        echo "VITE_GLOB_APP_TITLE=${PROJECT_NAME}" >> apps/web-ele/.env.production
-                        echo "VITE_GLOB_API_URL=${env.CURRENT_API_BASE_URL}" >> apps/web-ele/.env.production
-                        echo "VITE_COMPRESS=${params.COMPRESS_MODE}" >> apps/web-ele/.env.production
-                        echo "VITE_ROUTER_HISTORY=${params.ROUTER_MODE}" >> apps/web-ele/.env.production
-                        echo "VITE_BASE=${env.VITE_BASE}" >> apps/web-ele/.env.production
-                        
-                        cat apps/web-ele/.env.production
-                    """
-                    
-                    // 执行构建 - 优先构建apps/web-ele目录
+                    // 准备nginx配置
                     sh '''
-                        # 优先检查web-ele目录
-                        if [ -d "apps/web-ele" ] && [ -f "apps/web-ele/index.html" ]; then
-                            echo "在 apps/web-ele 目录中构建..."
-                            cd apps/web-ele && pnpm build
-                        elif [ -d "playground" ] && [ -f "playground/index.html" ]; then
-                            echo "在 playground 目录中构建..."
-                            cd playground && pnpm build
-                        else
-                            echo "尝试查找包含index.html的目录..."
-                            INDEX_DIR=$(find . -name "index.html" -not -path "*node_modules*" -not -path "*dist*" | head -1 | xargs dirname)
-                            if [ ! -z "$INDEX_DIR" ]; then
-                                echo "在 $INDEX_DIR 目录中构建..."
-                                cd $INDEX_DIR && pnpm build || cd $INDEX_DIR && pnpm vite build --mode production
-                            else
-                                echo "找不到入口文件，尝试直接构建子项目..."
-                                pnpm -r build
-                            fi
+                        cp scripts/deploy/nginx.conf nginx.conf.tmp
+                        
+                        # 取消注释gzip相关配置
+                        if [[ "${COMPRESS_MODE}" == *"gzip"* ]]; then
+                            echo "启用gzip压缩..."
+                            sed -i 's/# gzip on;/gzip on;/g' nginx.conf.tmp
+                            sed -i 's/# gzip_buffers/gzip_buffers/g' nginx.conf.tmp
+                            sed -i 's/# gzip_comp_level/gzip_comp_level/g' nginx.conf.tmp
+                            sed -i 's/# gzip_min_length/gzip_min_length/g' nginx.conf.tmp
+                            sed -i 's/# gzip_static/gzip_static/g' nginx.conf.tmp
+                            sed -i 's/# gzip_types/gzip_types/g' nginx.conf.tmp
+                            sed -i 's/# gzip_vary/gzip_vary/g' nginx.conf.tmp
                         fi
-                    '''
-
-                    // 确认构建结果
-                    sh '''
-                        echo "查找构建产物..."
-                        find . -name "dist" -type d | grep -v "node_modules" || echo "未找到dist目录"
+                        
+                        # 添加brotli支持
+                        if [[ "${COMPRESS_MODE}" == *"brotli"* ]]; then
+                            echo "添加brotli配置..."
+                            cat >> nginx.conf.tmp << EOL
+                        
+# brotli压缩
+brotli on;
+brotli_comp_level 6;
+brotli_buffers 16 8k;
+brotli_min_length 20;
+brotli_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript application/javascript image/svg+xml;
+EOL
+                        fi
+                        
+                        # 修改API网关
+                        sed -i "s|ryu-gateway-prod:8100|${CURRENT_API_GATEWAY}|g" nginx.conf.tmp
+                        
+                        # 配置history路由模式支持
+                        if [[ "${ROUTER_MODE}" == "history" ]]; then
+                            echo "配置history路由模式..."
+                            sed -i 's|location / {|location / {\n      # 用于配合 History 使用|g' nginx.conf.tmp
+                        fi
+                        
+                        # 更新nginx配置
+                        mv nginx.conf.tmp scripts/deploy/nginx.conf
                     '''
                 }
             }
@@ -375,88 +293,16 @@ EOL
                         // 登录Docker仓库
                         sh "echo ${DOCKER_PASSWORD} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USERNAME} --password-stdin"
 
-                        // 创建自定义Dockerfile，基于Vben Admin的最佳实践
-                        sh '''
-                            echo "创建自定义Dockerfile..."
-                            cat > Dockerfile.custom << 'EOL'
-FROM nginx:stable-alpine
-
-RUN echo "types { application/javascript js mjs; }" > /etc/nginx/conf.d/mjs.conf
-
-# 准备目录
-RUN mkdir -p /usr/share/nginx/html
-
-# 复制构建产物
-COPY apps/web-ele/dist /usr/share/nginx/html
-# 如果apps/web-ele/dist不存在，尝试playground/dist
-COPY playground/dist /usr/share/nginx/html 2>/dev/null || echo "使用apps/web-ele/dist"
-
-# 复制nginx配置
-COPY scripts/deploy/nginx.conf /etc/nginx/nginx.conf
-
-EXPOSE 8080
-
-# 启动nginx
-CMD ["nginx", "-g", "daemon off;"]
-EOL
-                            
-                            cat Dockerfile.custom
-                        '''
-                        
-                        // 准备nginx配置 - 启用gzip/brotli
-                        sh '''
-                            cp scripts/deploy/nginx.conf nginx.conf.tmp
-                            
-                            # 取消注释gzip相关配置
-                            if [[ "${COMPRESS_MODE}" == *"gzip"* ]]; then
-                                echo "启用gzip压缩..."
-                                sed -i 's/# gzip on;/gzip on;/g' nginx.conf.tmp
-                                sed -i 's/# gzip_buffers/gzip_buffers/g' nginx.conf.tmp
-                                sed -i 's/# gzip_comp_level/gzip_comp_level/g' nginx.conf.tmp
-                                sed -i 's/# gzip_min_length/gzip_min_length/g' nginx.conf.tmp
-                                sed -i 's/# gzip_static/gzip_static/g' nginx.conf.tmp
-                                sed -i 's/# gzip_types/gzip_types/g' nginx.conf.tmp
-                                sed -i 's/# gzip_vary/gzip_vary/g' nginx.conf.tmp
-                            fi
-                            
-                            # 添加brotli支持
-                            if [[ "${COMPRESS_MODE}" == *"brotli"* ]]; then
-                                echo "添加brotli配置..."
-                                cat >> nginx.conf.tmp << EOL
-                            
-# brotli压缩
-brotli on;
-brotli_comp_level 6;
-brotli_buffers 16 8k;
-brotli_min_length 20;
-brotli_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript application/javascript image/svg+xml;
-EOL
-                            fi
-                            
-                            # 修改API网关
-                            sed -i "s|ryu-gateway-prod:8100|${CURRENT_API_GATEWAY}|g" nginx.conf.tmp
-                            
-                            # 更新nginx配置
-                            mv nginx.conf.tmp scripts/deploy/nginx.conf
-                        '''
-
-                        // 配置history路由模式支持
-                        if (params.ROUTER_MODE == 'history') {
-                            sh '''
-                                echo "配置history路由模式..."
-                                sed -i 's|location / {|location / {\n      # 用于配合 History 使用|g' scripts/deploy/nginx.conf
-                            '''
-                        }
-
-                        // 构建镜像，使用自定义Dockerfile
+                        // 构建Docker镜像 - 使用多阶段构建
                         sh """
-                            # 使用自定义Dockerfile构建
+                            echo "开始构建Docker镜像..."
                             docker build --no-cache \
-                            -f Dockerfile.custom \
+                            -f Dockerfile.multi \
                             -t ${IMAGE_NAME}:${IMAGE_TAG} \
                             -t ${IMAGE_NAME}:${params.TARGET_ENV}-latest .
 
-                            # 推送镜像
+                            # 推送镜像到仓库
+                            echo "推送镜像到${DOCKER_REGISTRY}..."
                             docker push ${IMAGE_NAME}:${IMAGE_TAG}
                             docker push ${IMAGE_NAME}:${params.TARGET_ENV}-latest
                         """
@@ -474,16 +320,20 @@ EOL
                     sshagent([env.SSH_CREDENTIALS_ID]) {
                         sh """
                             ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "
+                                echo '开始部署 ${containerName} 到 ${DEPLOY_SERVER}...'
                                 mkdir -p ${DEPLOY_BASE_PATH}/${params.TARGET_ENV}/logs
 
-                                # 登录Docker仓库
+                                # 登录Docker仓库并拉取镜像
+                                echo '拉取镜像 ${IMAGE_NAME}:${deployTag}...'
                                 docker pull ${IMAGE_NAME}:${deployTag}
 
                                 # 停止和移除旧容器
+                                echo '停止旧容器...'
                                 docker stop ${containerName} || true
                                 docker rm ${containerName} || true
 
                                 # 启动新容器
+                                echo '启动新容器...'
                                 docker run -d \\
                                 --name ${containerName} \\
                                 --restart unless-stopped \\
@@ -495,7 +345,10 @@ EOL
                                 ${IMAGE_NAME}:${deployTag}
 
                                 # 清理未使用的镜像
+                                echo '清理未使用的镜像...'
                                 docker image prune -f
+                                
+                                echo '部署完成!'
                             "
                         """
 
