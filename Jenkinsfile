@@ -14,14 +14,12 @@ pipeline {
         )
         choice(
             name: 'COMPRESS_MODE',
-            choices: ['none', 'gzip', 'brotli', 'gzip,brotli'],
-            defaultValue: 'gzip',
+            choices: ['gzip', 'none', 'brotli', 'gzip,brotli'],
             description: '选择压缩模式'
         )
         choice(
             name: 'ROUTER_MODE',
             choices: ['hash', 'history'],
-            defaultValue: 'hash',
             description: '路由模式'
         )
     }
