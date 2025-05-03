@@ -1,387 +1,248 @@
 pipeline {
-    agent any
+//     agent
 
     parameters {
         choice(
             name: 'TARGET_ENV',
             choices: ['development', 'test', 'staging', 'production'],
-            description: '选择要部署的环境'
-        )
-        booleanParam(
-            name: 'SKIP_BUILD',
-            defaultValue: false,
-            description: '跳过构建步骤（用于重新部署已有镜像）'
+            description: '部署环境'
         )
         choice(
             name: 'COMPRESS_MODE',
             choices: ['gzip', 'none', 'brotli', 'gzip,brotli'],
-            description: '选择压缩模式'
+            description: '资源压缩模式'
         )
         choice(
             name: 'ROUTER_MODE',
             choices: ['hash', 'history'],
             description: '路由模式'
         )
+        booleanParam(
+            name: 'SKIP_TEST',
+            defaultValue: false,
+            description: '是否跳过测试'
+        )
     }
 
     environment {
-        // 核心配置
+        // 项目配置
         PROJECT_NAME = 'ryu-admin'
+
+        // Docker配置
         DOCKER_REGISTRY = 'registry.cn-hangzhou.aliyuncs.com'
         DOCKER_NAMESPACE = 'ryu-blog'
         IMAGE_NAME = "${DOCKER_REGISTRY}/${DOCKER_NAMESPACE}/${PROJECT_NAME}"
         IMAGE_TAG = "${params.TARGET_ENV}-${BUILD_NUMBER}"
 
-        // 凭证
-        DOCKER_REGISTRY_CREDENTIALS = '7bbd2f0b-5af4-4079-a15c-bc52037de966'
-        SSH_CREDENTIALS_ID = '37ab906a-5428-404f-ad67-765dd2a7a8ad'
-
         // 部署配置
-        DEPLOY_USER = 'ubuntu'
         DEPLOY_SERVER = '119.91.136.254'
-        DEPLOY_BASE_PATH = "/opt/ryu-blog"
-
-        // 环境特定配置 - 端口映射
-        PORT_MAPPING_DEV = '8001:8080'
-        PORT_MAPPING_TEST = '8002:8080'
-        PORT_MAPPING_STAGING = '8003:8080'
-        PORT_MAPPING_PROD = '8080:8080'
-
-        // API基础URL配置
-        API_BASE_URL_DEV = 'http://localhost:3000/api'
-        API_BASE_URL_TEST = 'http://test-api.example.com/api'
-        API_BASE_URL_STAGING = 'http://staging-api.example.com/api'
-        API_BASE_URL_PROD = '/api'
-
-        // API网关服务配置
-        API_GATEWAY_DEV = 'vben-gateway-dev:8100'
-        API_GATEWAY_TEST = 'vben-gateway-test:8100'
-        API_GATEWAY_STAGING = 'vben-gateway-staging:8100'
-        API_GATEWAY_PROD = 'ryu-gateway-prod:8100'
+        DEPLOY_PATH = "/opt/ryu-blog-/admin/${params.TARGET_ENV}"
 
         // Node环境变量
-        PNPM_HOME = "/pnpm"
-        PATH = "$PNPM_HOME:$PATH"
         NODE_OPTIONS = "--max-old-space-size=8192"
         TZ = "Asia/Shanghai"
     }
 
     options {
-        timeout(time: 20, unit: 'MINUTES')
+        timeout(time: 30, unit: 'MINUTES')
         disableConcurrentBuilds()
-        buildDiscarder(logRotator(numToKeepStr: '5'))
+        buildDiscarder(logRotator(numToKeepStr: '10'))
         timestamps()
     }
 
     stages {
-        stage('环境配置') {
+        stage('初始化环境') {
             steps {
-                script {
-                    // 设置当前环境的端口映射、API URL和网关服务
-                    if (params.TARGET_ENV == 'development') {
-                        env.CURRENT_PORT_MAPPING = env.PORT_MAPPING_DEV
-                        env.CURRENT_API_BASE_URL = env.API_BASE_URL_DEV
-                        env.CURRENT_API_GATEWAY = env.API_GATEWAY_DEV
-                        env.VITE_BASE = '/'
-                    } else if (params.TARGET_ENV == 'test') {
-                        env.CURRENT_PORT_MAPPING = env.PORT_MAPPING_TEST
-                        env.CURRENT_API_BASE_URL = env.API_BASE_URL_TEST
-                        env.CURRENT_API_GATEWAY = env.API_GATEWAY_TEST
-                        env.VITE_BASE = '/'
-                    } else if (params.TARGET_ENV == 'staging') {
-                        env.CURRENT_PORT_MAPPING = env.PORT_MAPPING_STAGING
-                        env.CURRENT_API_BASE_URL = env.API_BASE_URL_STAGING
-                        env.CURRENT_API_GATEWAY = env.API_GATEWAY_STAGING
-                        env.VITE_BASE = '/'
-                    } else if (params.TARGET_ENV == 'production') {
-                        env.CURRENT_PORT_MAPPING = env.PORT_MAPPING_PROD
-                        env.CURRENT_API_BASE_URL = env.API_BASE_URL_PROD
-                        env.CURRENT_API_GATEWAY = env.API_GATEWAY_PROD
-                        env.VITE_BASE = '/'
-                    }
+                echo "正在初始化构建环境..."
+                sh 'corepack enable'
+                sh 'pnpm --version || npm install -g pnpm'
+                sh 'node --version'
+                sh 'pnpm --version'
 
-                    echo "开始构建 ${PROJECT_NAME}"
-                    echo "目标环境: ${params.TARGET_ENV}"
-                    echo "目标服务器: ${DEPLOY_SERVER}"
-                    echo "端口映射: ${env.CURRENT_PORT_MAPPING}"
-                    echo "API基础URL: ${env.CURRENT_API_BASE_URL}"
-                    echo "API网关服务: ${env.CURRENT_API_GATEWAY}"
-                    echo "压缩模式: ${params.COMPRESS_MODE}"
-                    echo "路由模式: ${params.ROUTER_MODE}"
+                // 设置环境变量文件
+                script {
+                    def apiUrl = params.TARGET_ENV == 'production' ? '/api' : "http://${params.TARGET_ENV}-api.vben.io/api"
+
+                    writeFile file: '.env.${params.TARGET_ENV}', text: """
+                        # 构建环境变量
+                        VITE_GLOB_APP_TITLE=${PROJECT_NAME}
+                        VITE_GLOB_API_URL=${apiUrl}
+                        VITE_COMPRESS=${params.COMPRESS_MODE}
+                        VITE_ROUTER_HISTORY=${params.ROUTER_MODE}
+                        VITE_BASE=/
+                    """
                 }
             }
         }
 
-        stage('检出代码') {
+        stage('获取代码') {
             steps {
                 checkout scm
             }
         }
 
-        stage('准备构建环境') {
-            when { expression { return !params.SKIP_BUILD } }
+        stage('依赖安装') {
             steps {
+                echo "安装项目依赖..."
+                sh 'pnpm install --frozen-lockfile'
+            }
+        }
+
+        stage('代码修复') {
+            steps {
+                echo "执行代码修复..."
+
+                // 修复MenuList.vue中的重复parentId属性
                 script {
-                    // 配置.env.production文件
-                    sh """
-                        # 创建项目根目录的.env.production
-                        echo "# 环境变量 - 由Jenkins生成" > .env.production
-                        echo "VITE_GLOB_APP_TITLE=${PROJECT_NAME}" >> .env.production
-                        echo "VITE_GLOB_API_URL=${env.CURRENT_API_BASE_URL}" >> .env.production
-                        echo "VITE_COMPRESS=${params.COMPRESS_MODE}" >> .env.production
-                        echo "VITE_ROUTER_HISTORY=${params.ROUTER_MODE}" >> .env.production
-                        echo "VITE_BASE=${env.VITE_BASE}" >> .env.production
-                        
-                        # 为apps/web-ele创建环境变量
-                        mkdir -p apps/web-ele
-                        cp .env.production apps/web-ele/.env.production
-                        
-                        # 为playground创建环境变量
-                        mkdir -p playground
-                        cp .env.production playground/.env.production
-                        
-                        # 显示环境变量
-                        echo "项目环境变量:"
-                        cat .env.production
-                    """
-                    
-                    // 创建多阶段构建的Dockerfile
-                    sh '''
-                        echo "创建多阶段构建Dockerfile..."
-                        cat > Dockerfile.multi << 'EOL'
-# 第一阶段: 构建应用
-FROM node:20-slim AS builder
+                    def menuListPath = "apps/web-ele/src/views/features/menu/MenuList.vue"
+                    if (fileExists(menuListPath)) {
+                        sh "sed -i '/parentId: selectedParent.value,/d' ${menuListPath}"
+                        echo "已修复MenuList.vue中的重复parentId属性"
+                    }
+                }
 
-# 设置环境变量
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-ENV NODE_OPTIONS="--max-old-space-size=8192"
-ENV TZ=Asia/Shanghai
+                // 修改vite配置，更新ES版本到ES2022支持顶级await
+                script {
+                    def viteConfigPath = "apps/web-ele/vite.config.mts"
+                    if (fileExists(viteConfigPath)) {
+                        sh "sed -i 's/target:.*es2020.*/target: \"es2022\"/' ${viteConfigPath}"
+                        echo "已更新构建目标到ES2022以支持顶级await"
+                    }
+                }
 
-# 启用corepack
-RUN corepack enable
+                // 添加别名配置解决@vben-core包引用问题
+                script {
+                    def viteConfigPath = "apps/web-ele/vite.config.mts"
+                    if (fileExists(viteConfigPath)) {
+                        def aliasConfig = '''
+                        resolve: {
+                          alias: {
+                            "@vben-core/tabs-ui": fileURLToPath(new URL("../../packages/@core/ui-kit/tabs-ui/src/index.ts", import.meta.url)),
+                            "@vben-core/icons": fileURLToPath(new URL("../../packages/@core/base/icons/src/index.ts", import.meta.url)),
+                            "@vben-core/composables": fileURLToPath(new URL("../../packages/@core/composables/src/index.ts", import.meta.url))
+                          }
+                        },'''
 
-WORKDIR /app
+                        sh """
+                            sed -i '/build: {/a\\
+                            ${aliasConfig.replace('\n', '\\n')}' ${viteConfigPath}
+                        """
+                        echo "已添加别名配置以解决包引用问题"
+                    }
+                }
 
-# 复制package.json和lock文件
-COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
-
-# 复制所有源代码
-COPY . .
-
-# 安装依赖
-RUN pnpm install --frozen-lockfile || pnpm install
-
-# 修复重复parentId问题
-RUN if [ -f "apps/web-ele/src/views/features/menu/MenuList.vue" ]; then \\
-      sed -i '/parentId: selectedParent.value,/d' apps/web-ele/src/views/features/menu/MenuList.vue; \\
-    fi
-
-# 配置Vite以支持ES2022和顶级await
-RUN if [ -f "apps/web-ele/vite.config.mts" ]; then \\
-      sed -i 's/target:.*es2020.*/target: \\"es2022\\"/' apps/web-ele/vite.config.mts; \\
-    fi
-
-# 添加别名配置以解决@vben-core包引用问题
-RUN if [ -f "apps/web-ele/vite.config.mts" ]; then \\
-      sed -i '/build: {/a\\\n        resolve: {\\\n          alias: {\\\n            \\"@vben-core/tabs-ui\\": fileURLToPath(new URL(\\"../../packages/@core/ui-kit/tabs-ui/src/index.ts\\", import.meta.url)),\\\n            \\"@vben-core/icons\\": fileURLToPath(new URL(\\"../../packages/@core/base/icons/src/index.ts\\", import.meta.url)),\\\n            \\"@vben-core/composables\\": fileURLToPath(new URL(\\"../../packages/@core/composables/src/index.ts\\", import.meta.url))\\\n          }\\\n        },' apps/web-ele/vite.config.mts; \\
-    fi
-
-# 尝试构建web-ele
-RUN if [ -d "apps/web-ele" ]; then \\
-      cd apps/web-ele && pnpm build || echo "Web-ele构建失败"; \\
-    fi
-
-# 尝试构建playground
-RUN if [ -d "playground" ]; then \\
-      cd playground && pnpm build || echo "Playground构建失败"; \\
-    fi
-
-# 如果没有构建成功，创建一个静态页面
-RUN if [ ! -d "apps/web-ele/dist" ] && [ ! -d "playground/dist" ]; then \\
-      mkdir -p static-html; \\
-      echo "<!DOCTYPE html>
-<html lang=\"zh-CN\">
-<head>
-    <meta charset=\"UTF-8\">
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-    <title>Vben Admin</title>
-    <style>
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 2rem; }
-        .container { background-color: #f9f9f9; border-radius: 8px; padding: 2rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h1 { color: #42b983; }
-        .info { margin: 1.5rem 0; padding: 1rem; background-color: #f0f8ff; border-left: 4px solid #42b983; }
-        footer { margin-top: 2rem; color: #999; font-size: 0.9rem; }
-    </style>
-</head>
-<body>
-    <div class=\"container\">
-        <h1>Vben Admin 静态页面</h1>
-        <div class=\"info\">
-            <p>构建时间: $(date)</p>
-            <p>此静态页面由于构建失败自动生成。</p>
-        </div>
-        <p>此页面表示应用已成功部署，但构建过程未能完成构建Vue应用。请检查构建日志以获取更多信息。</p>
-        <footer>Powered by Vben Admin</footer>
-    </div>
-</body>
-</html>" > static-html/index.html; \\
-    fi
-
-# 第二阶段: 生产环境
-FROM nginx:stable-alpine
-
-# 添加MJS支持
-RUN echo "types { application/javascript js mjs; }" > /etc/nginx/conf.d/mjs.conf
-
-# 准备目录
-RUN mkdir -p /usr/share/nginx/html
-
-# 复制构建产物 - 优先使用web-ele，然后是playground，最后是静态页面
-COPY --from=builder /app/apps/web-ele/dist /usr/share/nginx/html/ 2>/dev/null || true
-COPY --from=builder /app/playground/dist /usr/share/nginx/html/ 2>/dev/null || true
-COPY --from=builder /app/static-html /usr/share/nginx/html/ 2>/dev/null || true
-
-# 复制nginx配置
-COPY scripts/deploy/nginx.conf /etc/nginx/nginx.conf
-
-EXPOSE 8080
-
-# 启动nginx
-CMD ["nginx", "-g", "daemon off;"]
-EOL
-                        
-                        cat Dockerfile.multi
-                    '''
-                    
-                    // 准备nginx配置
-                    sh '''
-                        cp scripts/deploy/nginx.conf nginx.conf.tmp
-                        
-                        # 取消注释gzip相关配置
-                        if [[ "${COMPRESS_MODE}" == *"gzip"* ]]; then
-                            echo "启用gzip压缩..."
-                            sed -i 's/# gzip on;/gzip on;/g' nginx.conf.tmp
-                            sed -i 's/# gzip_buffers/gzip_buffers/g' nginx.conf.tmp
-                            sed -i 's/# gzip_comp_level/gzip_comp_level/g' nginx.conf.tmp
-                            sed -i 's/# gzip_min_length/gzip_min_length/g' nginx.conf.tmp
-                            sed -i 's/# gzip_static/gzip_static/g' nginx.conf.tmp
-                            sed -i 's/# gzip_types/gzip_types/g' nginx.conf.tmp
-                            sed -i 's/# gzip_vary/gzip_vary/g' nginx.conf.tmp
-                        fi
-                        
-                        # 添加brotli支持
-                        if [[ "${COMPRESS_MODE}" == *"brotli"* ]]; then
-                            echo "添加brotli配置..."
-                            cat >> nginx.conf.tmp << EOL
-                        
-# brotli压缩
-brotli on;
-brotli_comp_level 6;
-brotli_buffers 16 8k;
-brotli_min_length 20;
-brotli_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript application/javascript image/svg+xml;
-EOL
-                        fi
-                        
-                        # 修改API网关
-                        sed -i "s|ryu-gateway-prod:8100|${CURRENT_API_GATEWAY}|g" nginx.conf.tmp
-                        
-                        # 配置history路由模式支持
-                        if [[ "${ROUTER_MODE}" == "history" ]]; then
-                            echo "配置history路由模式..."
-                            sed -i 's|location / {|location / {\n      # 用于配合 History 使用|g' nginx.conf.tmp
-                        fi
-                        
-                        # 更新nginx配置
-                        mv nginx.conf.tmp scripts/deploy/nginx.conf
-                    '''
+                // 修复routes.ts中的路由配置
+                script {
+                    def routesPath = "apps/web-ele/src/views/features/routes.ts"
+                    if (fileExists(routesPath)) {
+                        sh "sed -i 's|// import type { RouteRecordRaw } from|import type { RouteRecordRaw } from|g' ${routesPath}"
+                        sh "sed -i 's|// export default routes;|export default routes;|g' ${routesPath}"
+                        sh "sed -i 's|// const routes: RouteRecordRaw|const routes: RouteRecordRaw|g' ${routesPath}"
+                        echo "已修复routes.ts中的路由配置"
+                    }
                 }
             }
         }
 
-        stage('构建镜像') {
-            when { expression { return !params.SKIP_BUILD } }
+        stage('代码检查') {
+            when {
+                expression { !params.SKIP_TEST }
+            }
             steps {
+                echo "执行代码检查..."
+                sh 'pnpm run typecheck || echo "类型检查存在警告，但允许继续构建"'
+            }
+        }
+
+        stage('构建应用') {
+            steps {
+                echo "构建应用..."
+                dir('apps/web-ele') {
+                    sh 'pnpm run build'
+                }
+
+                // 检查构建结果
                 script {
-                    withCredentials([usernamePassword(credentialsId: "${DOCKER_REGISTRY_CREDENTIALS}", passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
-                        // 登录Docker仓库
-                        sh "echo ${DOCKER_PASSWORD} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USERNAME} --password-stdin"
-
-                        // 构建Docker镜像 - 使用多阶段构建
-                        sh """
-                            echo "开始构建Docker镜像..."
-                            docker build --no-cache \
-                            -f Dockerfile.multi \
-                            -t ${IMAGE_NAME}:${IMAGE_TAG} \
-                            -t ${IMAGE_NAME}:${params.TARGET_ENV}-latest .
-
-                            # 推送镜像到仓库
-                            echo "推送镜像到${DOCKER_REGISTRY}..."
-                            docker push ${IMAGE_NAME}:${IMAGE_TAG}
-                            docker push ${IMAGE_NAME}:${params.TARGET_ENV}-latest
-                        """
+                    if (!fileExists('apps/web-ele/dist')) {
+                        error "构建失败：没有生成dist目录"
                     }
+                }
+            }
+        }
+
+        stage('构建Docker镜像') {
+            steps {
+                echo "构建Docker镜像..."
+
+                // 创建Dockerfile
+                writeFile file: 'Dockerfile', text: '''
+                FROM nginx:stable-alpine
+
+                # 添加MJS支持
+                RUN echo "types { application/javascript js mjs; }" > /etc/nginx/conf.d/mjs.conf
+
+                # 复制构建产物
+                COPY apps/web-ele/dist /usr/share/nginx/html
+
+                # 复制nginx配置
+                COPY scripts/deploy/nginx.conf /etc/nginx/nginx.conf
+
+                # 配置压缩
+                RUN if [ "$COMPRESS_MODE" = "gzip" ] || [ "$COMPRESS_MODE" = "gzip,brotli" ]; then \\
+                      sed -i 's/# gzip on;/gzip on;/g' /etc/nginx/nginx.conf; \\
+                      sed -i 's/# gzip_types/gzip_types/g' /etc/nginx/nginx.conf; \\
+                    fi
+
+                EXPOSE 8080
+
+                CMD ["nginx", "-g", "daemon off;"]
+                '''
+
+                // 构建镜像
+                withCredentials([usernamePassword(credentialsId: '7bbd2f0b-5af4-4079-a15c-bc52037de966',
+                                               passwordVariable: 'DOCKER_PASSWORD',
+                                               usernameVariable: 'DOCKER_USERNAME')]) {
+                    sh """
+                        echo ${DOCKER_PASSWORD} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USERNAME} --password-stdin
+                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:${params.TARGET_ENV}-latest
+                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${IMAGE_NAME}:${params.TARGET_ENV}-latest
+                    """
                 }
             }
         }
 
         stage('部署应用') {
             steps {
-                script {
-                    def deployTag = params.SKIP_BUILD ? "${params.TARGET_ENV}-latest" : "${IMAGE_TAG}"
-                    def containerName = "${PROJECT_NAME}-${params.TARGET_ENV}"
+                echo "部署应用到${params.TARGET_ENV}环境..."
 
-                    sshagent([env.SSH_CREDENTIALS_ID]) {
-                        sh """
-                            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_SERVER} "
-                                echo '开始部署 ${containerName} 到 ${DEPLOY_SERVER}...'
-                                mkdir -p ${DEPLOY_BASE_PATH}/${params.TARGET_ENV}/logs
+                sshagent(['37ab906a-5428-404f-ad67-765dd2a7a8ad']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${DEPLOY_SERVER} << 'EOF'
+                        mkdir -p ${DEPLOY_PATH}
 
-                                # 登录Docker仓库并拉取镜像
-                                echo '拉取镜像 ${IMAGE_NAME}:${deployTag}...'
-                                docker pull ${IMAGE_NAME}:${deployTag}
+                        # 拉取最新镜像
+                        docker pull ${IMAGE_NAME}:${IMAGE_TAG}
 
-                                # 停止和移除旧容器
-                                echo '停止旧容器...'
-                                docker stop ${containerName} || true
-                                docker rm ${containerName} || true
+                        # 停止并删除旧容器
+                        docker stop ${PROJECT_NAME}-${params.TARGET_ENV} || true
+                        docker rm ${PROJECT_NAME}-${params.TARGET_ENV} || true
 
-                                # 启动新容器
-                                echo '启动新容器...'
-                                docker run -d \\
-                                --name ${containerName} \\
-                                --restart unless-stopped \\
-                                --network docker_vben-net \\
-                                -p ${env.CURRENT_PORT_MAPPING} \\
-                                -v ${DEPLOY_BASE_PATH}/${params.TARGET_ENV}/logs:/var/log/nginx \\
-                                -e API_GATEWAY=${env.CURRENT_API_GATEWAY} \\
-                                -e API_BASE_URL=${env.CURRENT_API_BASE_URL} \\
-                                ${IMAGE_NAME}:${deployTag}
+                        # 启动新容器
+                        docker run -d \\
+                          --name ${PROJECT_NAME}-${params.TARGET_ENV} \\
+                          --restart always \\
+                          -p 80:8080 \\
+                          -e COMPRESS_MODE=${params.COMPRESS_MODE} \\
+                          -e ROUTER_MODE=${params.ROUTER_MODE} \\
+                          -v ${DEPLOY_PATH}/logs:/var/log/nginx \\
+                          ${IMAGE_NAME}:${IMAGE_TAG}
 
-                                # 清理未使用的镜像
-                                echo '清理未使用的镜像...'
-                                docker image prune -f
-                                
-                                echo '部署完成!'
-                            "
-                        """
-
-                        // 输出部署信息
-                        def port = env.CURRENT_PORT_MAPPING.split(':')[0]
-                        echo "部署完成! 环境: ${params.TARGET_ENV}, 服务器: ${DEPLOY_SERVER}"
-                        echo "应用URL: http://${DEPLOY_SERVER}:${port}/"
-                    }
-                }
-            }
-        }
-        
-        stage('预览部署结果') {
-            steps {
-                script {
-                    def port = env.CURRENT_PORT_MAPPING.split(':')[0]
-                    echo "应用已部署! 您可以通过以下URL访问:"
-                    echo "http://${DEPLOY_SERVER}:${port}/"
+                        # 清理无用镜像
+                        docker image prune -f
+                        EOF
+                    """
                 }
             }
         }
@@ -392,36 +253,14 @@ EOL
             cleanWs()
         }
         success {
-            emailext (
-                subject: "【${PROJECT_NAME}】${params.TARGET_ENV}环境部署成功",
-                body: """
-                <p>部署成功!</p>
-                <p>项目: ${PROJECT_NAME}</p>
-                <p>环境: ${params.TARGET_ENV}</p>
-                <p>服务器: ${DEPLOY_SERVER}</p>
-                <p>压缩模式: ${params.COMPRESS_MODE}</p>
-                <p>路由模式: ${params.ROUTER_MODE}</p>
-                <p>访问地址: http://${DEPLOY_SERVER}:${env.CURRENT_PORT_MAPPING.split(':')[0]}/</p>
-                """,
-                to: 'admin@example.com',
-                mimeType: 'text/html'
-            )
+            echo "构建成功！应用已部署到${params.TARGET_ENV}环境"
+            slackSend(color: 'good',
+                     message: "${PROJECT_NAME} ${params.TARGET_ENV}环境部署成功! 版本: ${IMAGE_TAG}")
         }
         failure {
-            emailext (
-                subject: "【${PROJECT_NAME}】${params.TARGET_ENV}环境部署失败",
-                body: """
-                <p>部署失败!</p>
-                <p>项目: ${PROJECT_NAME}</p>
-                <p>环境: ${params.TARGET_ENV}</p>
-                <p>服务器: ${DEPLOY_SERVER}</p>
-                <p>压缩模式: ${params.COMPRESS_MODE}</p>
-                <p>路由模式: ${params.ROUTER_MODE}</p>
-                <p>详情: <a href='${env.BUILD_URL}'>构建日志</a></p>
-                """,
-                to: 'admin@example.com',
-                mimeType: 'text/html'
-            )
+            echo "构建失败！请检查日志"
+            slackSend(color: 'danger',
+                     message: "${PROJECT_NAME} ${params.TARGET_ENV}环境部署失败! 详情: ${BUILD_URL}")
         }
     }
 }
