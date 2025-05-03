@@ -149,6 +149,145 @@ pipeline {
                     // 安装依赖
                     sh 'pnpm install --frozen-lockfile || pnpm install'
                     
+                    // 准备内部依赖包
+                    sh '''
+                        # 准备内部依赖包
+                        echo "准备必要的内部配置包..."
+                        
+                        # 准备tsconfig包
+                        if [ -d "internal/tsconfig" ]; then
+                            echo "准备tsconfig包..."
+                            
+                            # 确保文件存在
+                            mkdir -p internal/tsconfig
+                            
+                            if [ ! -f "internal/tsconfig/web-app.json" ]; then
+                                echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Web Application","extends":"./web.json","compilerOptions":{"types":["vite/client"]}}' > internal/tsconfig/web-app.json
+                            fi
+                            
+                            if [ ! -f "internal/tsconfig/web.json" ]; then
+                                echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Web","extends":"./base.json","compilerOptions":{"lib":["ESNext","DOM","DOM.Iterable"],"jsx":"preserve","resolveJsonModule":true}}' > internal/tsconfig/web.json
+                            fi
+                            
+                            if [ ! -f "internal/tsconfig/base.json" ]; then
+                                echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Base","compilerOptions":{"target":"ESNext","useDefineForClassFields":true,"module":"ESNext","moduleResolution":"bundler","allowImportingTsExtensions":true,"strict":true,"noFallthroughCasesInSwitch":true,"skipLibCheck":true,"noEmit":true}}' > internal/tsconfig/base.json
+                            fi
+                            
+                            # 确保目标目录存在
+                            mkdir -p apps/web-ele/node_modules/@vben
+                            # 软链接到apps/web-ele
+                            ln -sf $(pwd)/internal/tsconfig apps/web-ele/node_modules/@vben/ || true
+                        else
+                            # 如果internal/tsconfig不存在，则创建
+                            mkdir -p internal/tsconfig
+                            echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Web Application","extends":"./web.json","compilerOptions":{"types":["vite/client"]}}' > internal/tsconfig/web-app.json
+                            echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Web","extends":"./base.json","compilerOptions":{"lib":["ESNext","DOM","DOM.Iterable"],"jsx":"preserve","resolveJsonModule":true}}' > internal/tsconfig/web.json
+                            echo '{"$schema":"https://json.schemastore.org/tsconfig","display":"Base","compilerOptions":{"target":"ESNext","useDefineForClassFields":true,"module":"ESNext","moduleResolution":"bundler","allowImportingTsExtensions":true,"strict":true,"noFallthroughCasesInSwitch":true,"skipLibCheck":true,"noEmit":true}}' > internal/tsconfig/base.json
+                            
+                            # 确保目标目录存在
+                            mkdir -p apps/web-ele/node_modules/@vben
+                            # 软链接到apps/web-ele
+                            ln -sf $(pwd)/internal/tsconfig apps/web-ele/node_modules/@vben/ || true
+                        fi
+                        
+                        # 准备vite-config包
+                        if [ -d "internal/vite-config" ]; then
+                            echo "准备vite-config包..."
+                            
+                            # 创建简单的dist目录和文件
+                            mkdir -p internal/vite-config/dist
+                            
+                            if [ ! -f "internal/vite-config/dist/index.mjs" ]; then
+                                echo 'import { defineConfig as defineViteConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+import vueJsx from "@vitejs/plugin-vue-jsx";
+
+export function defineConfig(config) {
+  return defineViteConfig({
+    plugins: [vue(), vueJsx()],
+    build: {
+      outDir: "dist",
+      minify: true
+    },
+    ...config?.vite
+  });
+}
+
+export default defineConfig;' > internal/vite-config/dist/index.mjs
+                            fi
+                            
+                            # 模拟类型
+                            if [ ! -f "internal/vite-config/dist/index.d.ts" ]; then
+                                echo 'import { UserConfig as ViteUserConfig } from "vite";
+
+export interface UserConfig {
+  application?: Record<string, any>;
+  vite?: ViteUserConfig;
+}
+
+export function defineConfig(config?: UserConfig): ViteUserConfig;
+
+export default defineConfig;' > internal/vite-config/dist/index.d.ts
+                            fi
+                            
+                            # 确保目标目录存在
+                            mkdir -p apps/web-ele/node_modules/@vben
+                            # 软链接到apps/web-ele
+                            ln -sf $(pwd)/internal/vite-config apps/web-ele/node_modules/@vben/ || true
+                        else
+                            # 如果internal/vite-config不存在，则创建
+                            mkdir -p internal/vite-config/dist
+                            echo 'import { defineConfig as defineViteConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+import vueJsx from "@vitejs/plugin-vue-jsx";
+
+export function defineConfig(config) {
+  return defineViteConfig({
+    plugins: [vue(), vueJsx()],
+    build: {
+      outDir: "dist",
+      minify: true
+    },
+    ...config?.vite
+  });
+}
+
+export default defineConfig;' > internal/vite-config/dist/index.mjs
+                            
+                            echo 'import { UserConfig as ViteUserConfig } from "vite";
+
+export interface UserConfig {
+  application?: Record<string, any>;
+  vite?: ViteUserConfig;
+}
+
+export function defineConfig(config?: UserConfig): ViteUserConfig;
+
+export default defineConfig;' > internal/vite-config/dist/index.d.ts
+                            
+                            # 确保目标目录存在
+                            mkdir -p apps/web-ele/node_modules/@vben
+                            # 软链接到apps/web-ele
+                            ln -sf $(pwd)/internal/vite-config apps/web-ele/node_modules/@vben/ || true
+                        fi
+                        
+                        # 显示链接结果
+                        ls -la apps/web-ele/node_modules/@vben/ || echo "无法查看链接结果"
+                    '''
+                    
+                    // 创建web-ele的.env.production文件，配置压缩和路由
+                    sh """
+                        mkdir -p apps/web-ele
+                        echo "# 环境变量 - 由Jenkins生成" > apps/web-ele/.env.production
+                        echo "VITE_GLOB_APP_TITLE=${PROJECT_NAME}" >> apps/web-ele/.env.production
+                        echo "VITE_GLOB_API_URL=${env.CURRENT_API_BASE_URL}" >> apps/web-ele/.env.production
+                        echo "VITE_COMPRESS=${params.COMPRESS_MODE}" >> apps/web-ele/.env.production
+                        echo "VITE_ROUTER_HISTORY=${params.ROUTER_MODE}" >> apps/web-ele/.env.production
+                        echo "VITE_BASE=${env.VITE_BASE}" >> apps/web-ele/.env.production
+                        
+                        cat apps/web-ele/.env.production
+                    """
+                    
                     // 执行构建 - 优先构建apps/web-ele目录
                     sh '''
                         # 优先检查web-ele目录
@@ -158,15 +297,12 @@ pipeline {
                         elif [ -d "playground" ] && [ -f "playground/index.html" ]; then
                             echo "在 playground 目录中构建..."
                             cd playground && pnpm build
-                        elif [ -f "pnpm-workspace.yaml" ]; then
-                            echo "使用工作空间过滤器构建..."
-                            pnpm --filter="./apps/web-ele" build || pnpm --filter="./playground" build
                         else
                             echo "尝试查找包含index.html的目录..."
                             INDEX_DIR=$(find . -name "index.html" -not -path "*node_modules*" -not -path "*dist*" | head -1 | xargs dirname)
                             if [ ! -z "$INDEX_DIR" ]; then
                                 echo "在 $INDEX_DIR 目录中构建..."
-                                cd $INDEX_DIR && pnpm build || cd $INDEX_DIR && pnpm vite build
+                                cd $INDEX_DIR && pnpm build || cd $INDEX_DIR && pnpm vite build --mode production
                             else
                                 echo "找不到入口文件，尝试直接构建子项目..."
                                 pnpm -r build
@@ -191,22 +327,32 @@ pipeline {
                         // 登录Docker仓库
                         sh "echo ${DOCKER_PASSWORD} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USERNAME} --password-stdin"
 
-                        // 确保dist目录存在于正确位置，优先使用web-ele的构建结果
+                        // 创建自定义Dockerfile，基于Vben Admin的最佳实践
                         sh '''
-                            # 查找dist目录并复制到根目录
-                            if [ -d "dist" ]; then
-                                echo "dist目录已存在于根目录"
-                            elif [ -d "apps/web-ele/dist" ]; then
-                                echo "复制apps/web-ele/dist到根目录..."
-                                cp -r apps/web-ele/dist dist
-                            elif [ -d "playground/dist" ]; then
-                                echo "复制playground/dist到根目录..."
-                                cp -r playground/dist dist
-                            else
-                                echo "创建最小的dist目录..."
-                                mkdir -p dist
-                                echo "<html><body><h1>Vue Vben Admin</h1><p>构建失败，创建了应急页面 - $(date)</p></body></html>" > dist/index.html
-                            fi
+                            echo "创建自定义Dockerfile..."
+                            cat > Dockerfile.custom << 'EOL'
+FROM nginx:stable-alpine
+
+RUN echo "types { application/javascript js mjs; }" > /etc/nginx/conf.d/mjs.conf
+
+# 准备目录
+RUN mkdir -p /usr/share/nginx/html
+
+# 复制构建产物
+COPY apps/web-ele/dist /usr/share/nginx/html
+# 如果apps/web-ele/dist不存在，尝试playground/dist
+COPY playground/dist /usr/share/nginx/html 2>/dev/null || echo "使用apps/web-ele/dist"
+
+# 复制nginx配置
+COPY scripts/deploy/nginx.conf /etc/nginx/nginx.conf
+
+EXPOSE 8080
+
+# 启动nginx
+CMD ["nginx", "-g", "daemon off;"]
+EOL
+                            
+                            cat Dockerfile.custom
                         '''
                         
                         // 准备nginx配置 - 启用gzip/brotli
@@ -254,13 +400,15 @@ EOL
                             '''
                         }
 
-                        // 构建镜像
+                        // 构建镜像，使用自定义Dockerfile
                         sh """
+                            # 使用自定义Dockerfile构建
                             docker build --no-cache \
-                            -f scripts/deploy/Dockerfile \
+                            -f Dockerfile.custom \
                             -t ${IMAGE_NAME}:${IMAGE_TAG} \
                             -t ${IMAGE_NAME}:${params.TARGET_ENV}-latest .
 
+                            # 推送镜像
                             docker push ${IMAGE_NAME}:${IMAGE_TAG}
                             docker push ${IMAGE_NAME}:${params.TARGET_ENV}-latest
                         """
