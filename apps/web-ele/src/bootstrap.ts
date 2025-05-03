@@ -19,6 +19,7 @@ import { initComponentAdapter } from './adapter/component';
 import App from './app.vue';
 import { router } from './router';
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import {useAuthStore} from './store';
 
 import {MdEditor} from 'md-editor-v3';
 import 'md-editor-v3/lib/style.css';
@@ -44,6 +45,10 @@ async function bootstrap(namespace: string) {
 
   // 配置 pinia-tore
   await initStores(app, { namespace });
+
+  // 从cookie中恢复token
+  const authStore = useAuthStore();
+  authStore.restoreFromCookie();
 
   // 安装权限指令
   registerAccessDirective(app);

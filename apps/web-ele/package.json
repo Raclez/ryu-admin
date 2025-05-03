@@ -55,7 +55,9 @@
     "puppeteer": "^24.4.0",
     "vite-plugin-monaco-editor": "^1.1.0",
     "vue": "catalog:",
-    "vue-router": "catalog:"
+    "vue-router": "catalog:",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
   },
   "devDependencies": {
     "@types/lodash-es": "^4.17.12",

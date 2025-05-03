@@ -92,7 +92,7 @@ export async function getUserPageApi(params: UserApi.UserQueryParams): Promise<P
  * @returns 用户详情
  */
 export async function getUserDetailApi(id: string): Promise<UserApi.UserDetail> {
-  return requestClient.get(`/ryu-user/users/${id}`);
+  return requestClient.get(`/ryu-user/users/detail/${id}`);
 }
 
 /**
@@ -101,7 +101,7 @@ export async function getUserDetailApi(id: string): Promise<UserApi.UserDetail> 
  * @returns 创建结果
  */
 export async function createUserApi(data: UserApi.UserCreateParams): Promise<string> {
-  return requestClient.post('/ryu-user/users', data);
+  return requestClient.post('/ryu-user/users/save', data);
 }
 
 /**
@@ -110,7 +110,7 @@ export async function createUserApi(data: UserApi.UserCreateParams): Promise<str
  * @returns 更新结果
  */
 export async function updateUserApi(data: UserApi.UserCreateParams): Promise<boolean> {
-  return requestClient.put('/ryu-user/users', data);
+  return requestClient.put('/ryu-user/users/edit', data);
 }
 
 /**
@@ -119,7 +119,7 @@ export async function updateUserApi(data: UserApi.UserCreateParams): Promise<boo
  * @returns 删除结果
  */
 export async function deleteUserApi(id: string): Promise<boolean> {
-  return requestClient.delete(`/ryu-user/users/${id}`);
+  return requestClient.delete(`/ryu-user/users/delete/${id}`);
 }
 
 /**
@@ -128,7 +128,7 @@ export async function deleteUserApi(id: string): Promise<boolean> {
  * @returns 删除结果
  */
 export async function batchDeleteUserApi(ids: string[]): Promise<boolean> {
-  return requestClient.post('/ryu-user/users/batch', ids);
+  return requestClient.post('/ryu-user/users/batch-delete', ids);
 }
 
 /**

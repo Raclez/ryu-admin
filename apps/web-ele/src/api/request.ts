@@ -40,6 +40,26 @@ export const API_ERROR_MESSAGES: Record<number, string> = {
 
 const { apiURL } = useAppConfig(import.meta.env, import.meta.env.PROD);
 
+// Cookie工具函数 - 需要与auth.ts中一致
+const getCookie = (name: string) => {
+  const nameEQ = `${name}=`;
+  const ca = document.cookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i] || '';
+    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+    if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+  }
+  return null;
+};
+
+// 添加setCookie函数
+const setCookie = (name: string, value: string, days: number = 7) => {
+  const date = new Date();
+  date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+  const expires = `; expires=${date.toUTCString()}`;
+  document.cookie = `${name}=${value}${expires}; path=/; SameSite=Lax`;
+};
+
 /**
  * 创建请求客户端实例
  * @param baseURL 基础URL
@@ -88,7 +108,10 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
     try {
       const resp = await refreshTokenApi();
       const newToken = resp.data;
+      // 更新store中的token
       accessStore.setAccessToken(newToken);
+      // 同时更新cookie中的token
+      setCookie('accessToken', newToken);
       return newToken;
     } catch (error) {
       console.error('刷新token失败', error);
@@ -111,7 +134,12 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
     fulfilled: async (config) => {
       const accessStore = useAccessStore();
 
-      config.headers.Authorization = formatToken(accessStore.accessToken);
+      // 优先从cookie中获取token
+      const tokenFromCookie = getCookie('accessToken');
+      // 如果cookie中有token就使用cookie中的，否则使用store中的
+      const tokenToUse = tokenFromCookie || accessStore.accessToken;
+
+      config.headers.Authorization = formatToken(tokenToUse);
       config.headers['Accept-Language'] = preferences.app.locale;
       return config;
     },

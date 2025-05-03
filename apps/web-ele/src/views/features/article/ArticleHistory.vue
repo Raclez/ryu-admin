@@ -5,10 +5,11 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  version,
   watch,
 } from 'vue';
 import {useRoute, useRouter} from 'vue-router';
-
+import {restoreVersion} from '#/api/core/historyVersion.ts';
 import {
   ArrowDown,
   ArrowUp,
@@ -285,16 +286,20 @@ const handleRestore = (version) => {
 const confirmRestore = async () => {
   if (!currentVersion.value) return;
 
-  restoring.value = true;
+  // restoring.value = true;
   try {
-    await restoreVersion(currentVersion.value.id);
+    const data = {
+      postId: route.params.id,
+      version: currentVersion.value.version,
+    }
+    await restoreVersion(data);
     ElMessage.success('版本恢复成功');
     restoreConfirmVisible.value = false;
     await fetchVersions();
   } catch {
     ElMessage.error('版本恢复失败');
   } finally {
-    restoring.value = false;
+    // restoring.value = false;
   }
 };
 

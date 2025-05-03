@@ -142,6 +142,25 @@
 
 //   // =========== 权限管理 ===========
 //   {
+//     path: '/user',
+//     name: 'User',
+//     component: () => import('./user/index.vue'),
+//     meta: {
+//       title: '用户管理',
+//       icon: 'user',
+//     },
+//     children: [
+//       {
+//         path: 'list',
+//         name: 'UserList',
+//         component: () => import('./user/UserList.vue'),
+//         meta: {
+//           title: '用户列表',
+//         },
+//       },
+//     ],
+//   },
+//   {
 //     path: '/role',
 //     name: 'Role',
 //     component: () => import('./role/index.vue'),

@@ -1,1 +1,1 @@
-export { default } from '@vben/tailwind-config/postcss';
+export {default} from '../../internal/tailwind-config/dist/postcss.config.mjs';

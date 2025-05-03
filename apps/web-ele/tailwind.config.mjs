@@ -1,1 +1,1 @@
-export { default } from '@vben/tailwind-config';
+export {default} from '../../internal/tailwind-config/dist/index.mjs';

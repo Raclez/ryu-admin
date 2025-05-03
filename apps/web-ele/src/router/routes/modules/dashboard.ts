@@ -4,7 +4,7 @@ const routes: RouteRecordRaw[] = [
   {
     name: 'Dashboard',
     path: '/dashboard',
-    redirect: '/dashboard/blog-dashboard',
+    // redirect: '/dashboard/blog-dashboard',
     meta: {
       hideInMenu: true,
     },

@@ -27,19 +27,17 @@ export function getVersion(postId: string, version: number) {
   return requestClient.get(`/ryu-content/postVersion/detail/${postId}/versions/${version}`)
 }
 
-//
-// /**
-//  * 恢复指定版本
-//  * @param articleId 文章ID
-//  * @param versionId 版本ID
-//  * @returns Promise<void>
-//  */
-// export function restoreVersion(articleId: number, versionId: number) {
-//   return request({
-//     url: `/api/v1/articles/${articleId}/versions/${versionId}/restore`,
-//     method: 'post'
-//   });
-// }
+
+/**
+ * 恢复指定版本
+ * @param articleId 文章ID
+ * @param versionId 版本ID
+ * @returns Promise<void>
+ */
+export function restoreVersion(data) {
+  return requestClient.post('/ryu-content/postVersion/rollback', data)
+};
+
 //
 // /**
 //  * 添加版本标签

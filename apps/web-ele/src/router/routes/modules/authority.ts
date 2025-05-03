@@ -1,6 +1,6 @@
 import type {RouteRecordRaw} from 'vue-router';
 
-import {Help, Menu, Operation, User} from '@element-plus/icons-vue';
+import {Help, Menu, Operation, User, Lock} from '@element-plus/icons-vue';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -40,6 +40,16 @@ const routes: RouteRecordRaw[] = [
         path: '/permission/list',
         component: () =>
           import('#/views/features/permission/PermissionList.vue'),
+      },
+
+      {
+        meta: {
+          title: '用户管理',
+          icon: User,
+        },
+        name: 'UserList',
+        path: '/user/list',
+        component: () => import('#/views/features/user/UserList.vue'),
       },
     ],
   },
