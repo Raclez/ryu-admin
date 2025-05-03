@@ -18,8 +18,17 @@ function setupCommonGuard(router: Router) {
   // 记录已经加载的页面
   const loadedPaths = new Set<string>();
 
-  router.beforeEach(async (to) => {
+  router.beforeEach(async (to, from) => {
     to.meta.loaded = loadedPaths.has(to.path);
+
+    // 从首页跳转到其他页面时的特殊处理
+    const isDashboardPath = from.path === '/dashboard' || from.path === DEFAULT_HOME_PATH;
+    if (isDashboardPath && to.path !== from.path) {
+      console.log('从首页跳转到其他页面，清除缓存', from.path, to.path);
+      // 清除路径缓存，确保页面重新加载
+      loadedPaths.delete(to.path);
+      to.meta.loaded = false;
+    }
 
     // 页面加载进度条
     if (!to.meta.loaded && preferences.transition.progress) {
@@ -30,7 +39,6 @@ function setupCommonGuard(router: Router) {
 
   router.afterEach((to) => {
     // 记录页面是否加载,如果已经加载，后续的页面切换动画等效果不在重复执行
-
     loadedPaths.add(to.path);
 
     // 关闭页面加载进度条

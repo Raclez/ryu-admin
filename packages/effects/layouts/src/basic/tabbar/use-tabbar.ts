@@ -82,11 +82,12 @@ export function useTabbar() {
   };
 
   function wrapperTabLocale(tab: RouteLocationNormalizedGeneric) {
+    const metaTitle = tab?.meta?.title;
     return {
       ...tab,
       meta: {
         ...tab?.meta,
-        title: $t(tab?.meta?.title as string),
+        title: typeof metaTitle === 'string' ? $t(metaTitle) : metaTitle,
       },
     };
   }

@@ -16,6 +16,8 @@ import { useAccessStore } from '@vben/stores';
 import {ElMessage, ElNotification} from 'element-plus';
 
 import { useAuthStore } from '#/store';
+import {router} from '#/router';
+import {LOGIN_PATH} from '@vben/constants';
 
 import { refreshTokenApi } from './core';
 
@@ -61,6 +63,24 @@ const setCookie = (name: string, value: string, days: number = 7) => {
 };
 
 /**
+ * 导航到登录页面
+ * 优先使用Vue Router，失败时使用location.href
+ */
+function navigateToLogin() {
+  try {
+    // 尝试使用router进行导航
+    if (router) {
+      router.push(LOGIN_PATH);
+    } else {
+      window.location.href = LOGIN_PATH;
+    }
+  } catch (e) {
+    console.warn('路由跳转失败，使用location:', e);
+    window.location.href = LOGIN_PATH;
+  }
+}
+
+/**
  * 创建请求客户端实例
  * @param baseURL 基础URL
  * @param options 配置选项
@@ -81,11 +101,35 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
     console.warn('Access token or refresh token is invalid or expired.');
     const accessStore = useAccessStore();
     const authStore = useAuthStore();
+
+    // 立即清除token和状态
     accessStore.setAccessToken(null);
+    accessStore.setLoginExpired(false);
+    accessStore.setIsAccessChecked(false);
+
+    // 清除cookie中的token
+    document.cookie = `accessToken=; Max-Age=-99999999; path=/`;
+    document.cookie = `refreshToken=; Max-Age=-99999999; path=/`;
+
+    // 清除localStorage中的持久化数据
+    const appNamespace = import.meta.env.VITE_APP_NAMESPACE || 'vben';
+    const env = import.meta.env.PROD ? 'prod' : 'dev';
+    const appVersion = import.meta.env.VITE_APP_VERSION || '';
+    const namespacePrefix = `${appNamespace}-${appVersion}-${env}`;
+
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith(namespacePrefix) && (key.includes('access') || key.includes('user'))) {
+        console.log('清除localStorage项:', key);
+        localStorage.removeItem(key);
+      }
+    });
+
     if (
       preferences.app.loginExpiredMode === 'modal' &&
-      accessStore.isAccessChecked
+      accessStore.isAccessChecked &&
+      window.location.pathname.includes('/dashboard')
     ) {
+      // 在dashboard页面上使用模态框
       accessStore.setLoginExpired(true);
       ElNotification({
         type: 'error',
@@ -94,7 +138,9 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
         duration: 3000,
       });
     } else {
-      await authStore.logout();
+      // 直接使用重定向
+      console.log('认证失败，正在重定向到登录页...');
+      navigateToLogin();
     }
   }
 
@@ -138,6 +184,22 @@ function createRequestClient(baseURL: string, options?: RequestClientOptions) {
       const tokenFromCookie = getCookie('accessToken');
       // 如果cookie中有token就使用cookie中的，否则使用store中的
       const tokenToUse = tokenFromCookie || accessStore.accessToken;
+
+      // 如果没有token，且当前请求不是登录/注册等公开接口，则可能出现问题
+      const isPublicApi = config.url?.includes('/auth/login') ||
+        config.url?.includes('/auth/register') ||
+        config.url?.includes('/captcha');
+
+      if (!tokenToUse && !isPublicApi) {
+        console.warn('请求需要认证但没有token，可能已经登出或token已过期');
+        // 如果当前不在登录页，则跳转到登录页
+        if (!window.location.pathname.includes('/auth/login')) {
+          console.log('准备重定向到登录页...');
+          navigateToLogin();
+          // 取消请求
+          return Promise.reject(new Error('无效的认证状态，请求已中断'));
+        }
+      }
 
       config.headers.Authorization = formatToken(tokenToUse);
       config.headers['Accept-Language'] = preferences.app.locale;

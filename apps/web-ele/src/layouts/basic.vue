@@ -4,9 +4,7 @@ import type { NotificationItem } from '@vben/layouts';
 import { computed, ref, watch } from 'vue';
 
 import { AuthenticationLoginExpiredModal } from '@vben/common-ui';
-import { VBEN_DOC_URL, VBEN_GITHUB_URL } from '@vben/constants';
 import { useWatermark } from '@vben/hooks';
-import { BookOpenText, CircleHelp, MdiGithub } from '@vben/icons';
 import {
   BasicLayout,
   LockScreen,
@@ -16,6 +14,7 @@ import {
 import { preferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
 import { openWindow } from '@vben/utils';
+import {ElNotification} from 'element-plus';
 
 import { $t } from '#/locales';
 import { useAuthStore } from '#/store';
@@ -61,33 +60,7 @@ const showDot = computed(() =>
 );
 
 const menus = computed(() => [
-  {
-    handler: () => {
-      openWindow(VBEN_DOC_URL, {
-        target: '_blank',
-      });
-    },
-    icon: BookOpenText,
-    text: $t('ui.widgets.document'),
-  },
-  {
-    handler: () => {
-      openWindow(VBEN_GITHUB_URL, {
-        target: '_blank',
-      });
-    },
-    icon: MdiGithub,
-    text: 'GitHub',
-  },
-  {
-    handler: () => {
-      openWindow(`${VBEN_GITHUB_URL}/issues`, {
-        target: '_blank',
-      });
-    },
-    icon: CircleHelp,
-    text: $t('ui.widgets.qa'),
-  },
+  // 注释或移除所有按钮，返回空数组
 ]);
 
 const avatar = computed(() => {
@@ -95,7 +68,38 @@ const avatar = computed(() => {
 });
 
 async function handleLogout() {
-  await authStore.logout(false);
+  console.log('用户点击登出按钮');
+
+  try {
+    // 显示登出提示
+    ElNotification({
+      type: 'info',
+      title: '正在退出',
+      message: '正在退出系统，请稍候...',
+      duration: 2000,
+    });
+
+    // 手动清除localStorage中的token数据
+    const appNamespace = import.meta.env.VITE_APP_NAMESPACE || 'vben';
+    const env = import.meta.env.PROD ? 'prod' : 'dev';
+    const appVersion = import.meta.env.VITE_APP_VERSION || '';
+    const namespacePrefix = `${appNamespace}-${appVersion}-${env}`;
+
+    // 在退出前主动清除localStorage中的数据
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith(namespacePrefix)) {
+        console.log('清除localStorage项:', key);
+        localStorage.removeItem(key);
+      }
+    });
+
+    // 确保正确退出
+    await authStore.logout(true);
+  } catch (error) {
+    console.error('登出过程发生错误:', error);
+    // 如果正常退出流程失败，强制跳转
+    window.location.href = '/auth/login';
+  }
 }
 
 function handleNoticeClear() {

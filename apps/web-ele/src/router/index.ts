@@ -8,6 +8,7 @@ import { resetStaticRoutes } from '@vben/utils';
 
 import { createRouterGuard } from './guard';
 import { routes } from './routes';
+import {setupDashboardFix} from './dashboard-fix';
 
 /**
  *  @zh_CN 创建vue-router实例
@@ -25,13 +26,18 @@ const router = createRouter({
     }
     return to.hash ? { behavior: 'smooth', el: to.hash } : { left: 0, top: 0 };
   },
-  // 是否应该禁止尾部斜杠。
-  // strict: true,
+  // 添加以下行来启用强制刷新
+  linkActiveClass: 'active',
+  linkExactActiveClass: 'exact-active',
+  sensitive: true,
+  strict: true,
 });
 
 const resetRoutes = () => resetStaticRoutes(router, routes);
 
 // 创建路由守卫
 createRouterGuard(router);
+// 应用首页特殊修复
+setupDashboardFix(router);
 
 export { resetRoutes, router };

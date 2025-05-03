@@ -69,6 +69,9 @@ import type {ScheduledPost} from './components/blog-scheduled-posts.vue';
 const userStore = useUserStore();
 const router = useRouter();
 
+// 定义数据加载动画
+const loadingAnimations = ref(true);
+
 // 获取天气和问候语
 const greeting = computed(() => {
   const hour = new Date().getHours();
@@ -136,37 +139,37 @@ const quickNavItems: WorkbenchQuickNavItem[] = [
     title: '写文章',
     icon: Edit,
     color: '#67C23A',
-    url: '/posts/save',
+    url: '/article/edit',
   },
   {
     title: '博客管理',
     icon: Reading,
     color: '#909399',
-    url: '/posts/page',
+    url: '/article/list',
   },
   {
     title: '分类管理',
     icon: Ticket,
     color: '#E6A23C',
-    url: '/category/page',
+    url: '/category/list',
   },
   {
     title: '标签管理',
     icon: Collection,
     color: '#F56C6C',
-    url: '/tags/page',
+    url: '/tag/list',
   },
   {
-    title: '评论管理',
+    title: '资源管理',
     icon: Comment,
     color: '#909399',
-    url: '/comment/page',
+    url: '/resource/list',
   },
   {
-    title: '媒体管理',
+    title: '网盘管理',
     icon: Picture,
     color: '#67C23A',
-    url: '/media/page',
+    url: '/disk/files',
   },
 ];
 
@@ -209,6 +212,7 @@ const todoItems = ref<TodoItem[]>([
 // 新增代办事项
 const newTodoTitle = ref('');
 const newTodoPriority = ref<'high' | 'medium' | 'low'>('medium');
+const newTodoDeadline = ref<number>(dayjs().add(3, 'day').valueOf());
 const priorityOptions = [
   {value: 'high', label: '高'},
   {value: 'medium', label: '中'},
@@ -221,12 +225,26 @@ const addTodo = (todoData: { title: string; priority: 'high' | 'medium' | 'low' 
     id: Date.now(),
     title: todoData.title,
     description: '',
-    deadline: dayjs().add(3, 'day').valueOf(),
+    deadline: newTodoDeadline.value || dayjs().add(3, 'day').valueOf(),
     priority: todoData.priority,
     completed: false
   };
 
   todoItems.value.unshift(newTask);
+
+  // 清空输入框
+  newTodoTitle.value = '';
+  newTodoDeadline.value = dayjs().add(3, 'day').valueOf();
+};
+
+// 添加新任务的包装方法
+const addNewTodo = () => {
+  if (newTodoTitle.value.trim()) {
+    addTodo({
+      title: newTodoTitle.value,
+      priority: newTodoPriority.value
+    });
+  }
 };
 
 // 切换任务完成状态
@@ -511,7 +529,7 @@ const navTo = (item: WorkbenchQuickNavItem) => {
  * @param id 文章ID
  */
 const editPost = (id: number | string) => {
-  router.push(`/posts/save/${id}`);
+  router.push(`/article/edit/${id}`);
 };
 
 /**
@@ -519,33 +537,216 @@ const editPost = (id: number | string) => {
  * @param id 文章ID
  */
 const viewPost = (id: number | string) => {
-  // 这里可以跳转到前台预览页面
-  router.push(`/posts/preview/${id}`);
+  // 由于当前没有专门的预览页面，暂时跳转到编辑页面
+  router.push(`/article/edit/${id}`);
 };
 
 // 生命周期钩子
 onMounted(() => {
   // 这里可以加载实际数据
+  setTimeout(() => {
+    loadingAnimations.value = false;
+  }, 800);
 });
+
+// 导航到写文章页面
+function goToWriteArticle() {
+  router.push('/article/edit');
+}
+
+// 导航到文章管理页面
+function goToManageArticles() {
+  router.push('/article/list');
+}
+
+// 导航到文章列表页面
+function goToPostsPage() {
+  router.push('/article/list');
+}
+
+// 编辑任务
+const editTodo = (todo: TodoItem) => {
+  // 这里可以实现编辑功能，例如打开编辑对话框
+  console.log('编辑任务:', todo);
+};
 </script>
 
 <template>
+  <!-- 页面容器 -->
+  <div>
+    <!-- 加载动画遮罩 -->
+    <div v-if="loadingAnimations"
+         class="fixed inset-0 bg-white dark:bg-gray-900 z-50 flex items-center justify-center">
+      <div class="loading-spinner"></div>
+    </div>
+
+    <!-- 主内容区域 -->
+    <div :class="{'opacity-0': loadingAnimations, 'opacity-100': !loadingAnimations}"
+         class="transition-opacity duration-500">
   <div class="dashboard p-4">
-    <!-- 个人欢迎区域 - 苹果风格 -->
+    <!-- 个人欢迎区域 - 现代化设计 -->
     <div
-      class="welcome-card mb-4 rounded-lg backdrop-blur-sm p-4 shadow-sm border border-gray-100 dark:border-gray-700">
-      <div class="flex items-center">
-        <el-avatar :size="60" :src="userStore.userInfo?.avatar || preferences.app.defaultAvatar"/>
+      class="welcome-card mb-6 relative overflow-hidden rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+      <!-- 背景图案 -->
+      <div
+        class="absolute inset-0 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900">
+        <div class="absolute inset-0 opacity-10">
+          <svg class="h-full w-full" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="wave-pattern" height="100" patternTransform="scale(2) rotate(0)" patternUnits="userSpaceOnUse"
+                       width="100">
+                <path d="M50 0C22.4 0 0 22.4 0 50C0 77.6 22.4 100 50 100C77.6 100 100 77.6 100 50C100 22.4 77.6 0 50 0ZM50 90C27.9 90 10 72.1 10 50C10 27.9 27.9 10 50 10C72.1 10 90 27.9 90 50C90 72.1 72.1 90 50 90Z"
+                      fill="rgba(100, 100, 255, 0.1)"/>
+              </pattern>
+            </defs>
+            <rect fill="url(#wave-pattern)" height="100%" width="100%" x="0" y="0"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- 内容区域 -->
+      <div
+        class="relative p-6 flex flex-col md:flex-row items-center md:items-start justify-between">
+        <!-- 左侧欢迎信息 -->
+        <div class="flex items-center md:max-w-3xl">
+          <div class="mr-5 relative">
+            <div
+              class="avatar-ring absolute -inset-1 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full blur opacity-30 animate-pulse"></div>
+            <el-avatar
+              :size="90"
+              :src="userStore.userInfo?.avatar || preferences.app.defaultAvatar"
+              class="border-4 border-white dark:border-gray-800 shadow-md"
+            />
+          </div>
         <div class="ml-4">
-          <h1 class="text-xl font-medium">{{ greeting }}，{{ userStore.userInfo?.realName }}</h1>
-          <p class="mt-1 text-sm text-gray-500">{{ today }}，您的博客管理中心</p>
+          <h1
+            class="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">
+            {{ greeting }}，{{ userStore.userInfo?.realName }}
+          </h1>
+          <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+            {{ today }}
+          </p>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            欢迎回到您的博客管理中心，今天准备创作什么内容呢？
+          </p>
+
+          <!-- 快捷按钮 -->
+          <div class="mt-5 flex space-x-4">
+            <div class="action-button flex-1 flex items-center justify-center py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-medium shadow-md hover:shadow-lg transition-all duration-300 transform hover:translate-y-[-2px] cursor-pointer"
+                 @click="goToWriteArticle">
+              <el-icon :size="18" class="mr-2">
+                <Edit/>
+              </el-icon>
+              <span>写文章</span>
+            </div>
+            <div class="action-button flex-1 flex items-center justify-center py-2.5 px-4 rounded-xl bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 text-gray-700 dark:text-gray-200 font-medium shadow-md hover:shadow-lg transition-all duration-300 transform hover:translate-y-[-2px] cursor-pointer"
+                 @click="goToManageArticles">
+              <el-icon :size="18" class="mr-2">
+                <Document/>
+              </el-icon>
+              <span>管理文章</span>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <!-- 右侧统计信息 -->
+        <div class="mt-6 md:mt-0 flex space-x-6 self-center">
+          <div
+            class="stat-card flex flex-col items-center p-4 rounded-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm shadow-sm">
+            <div class="text-sm text-gray-500 dark:text-gray-400">今日访问</div>
+            <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">{{
+                formatNumber(1284)
+              }}
+            </div>
+            <div class="text-xs text-green-500">↑8.2%</div>
+          </div>
+          <div
+            class="stat-card flex flex-col items-center p-4 rounded-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm shadow-sm">
+            <div class="text-sm text-gray-500 dark:text-gray-400">未读评论</div>
+            <div class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{{
+                formatNumber(24)
+              }}
+            </div>
+            <div class="text-xs text-green-500">↑4.5%</div>
+          </div>
+          <div
+            class="stat-card flex flex-col items-center p-4 rounded-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm shadow-sm">
+            <div class="text-sm text-gray-500 dark:text-gray-400">草稿箱</div>
+            <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">{{
+                formatNumber(8)
+              }}
+            </div>
+            <div class="text-xs text-gray-500">待发布</div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 统计概览 -->
-    <div class="mb-4">
-      <AnalysisOverview :items="blogStats"/>
+    <div class="mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div v-for="(stat, index) in blogStats" :key="index"
+             :class="[
+                   index === 0 ? 'bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20' :
+                   index === 1 ? 'bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20' :
+                   index === 2 ? 'bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20' :
+                   'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20'
+                 ]"
+             class="stat-overview-card relative overflow-hidden p-5 rounded-xl transition-all duration-300 border border-gray-100 dark:border-gray-700 hover:shadow-md hover:translate-y-[-2px]">
+          <!-- 装饰圆圈 -->
+          <div :class="[
+                     index === 0 ? 'bg-blue-200 dark:bg-blue-600' :
+                     index === 1 ? 'bg-green-200 dark:bg-green-600' :
+                     index === 2 ? 'bg-yellow-200 dark:bg-yellow-600' :
+                     'bg-purple-200 dark:bg-purple-600'
+                   ]"
+               class="absolute -right-4 -top-4 rounded-full h-20 w-20 opacity-20"></div>
+
+          <!-- 图标 -->
+          <div :class="[
+                     index === 0 ? 'text-blue-500 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30' :
+                     index === 1 ? 'text-green-500 dark:text-green-400 bg-green-100 dark:bg-green-900/30' :
+                     index === 2 ? 'text-yellow-500 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30' :
+                     'text-purple-500 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/30'
+                   ]"
+               class="inline-flex p-3 rounded-lg mb-4">
+            <el-icon :size="24">
+              <component :is="stat.icon"/>
+            </el-icon>
+          </div>
+
+          <!-- 内容 -->
+          <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ stat.title }}</h3>
+          <div class="flex items-baseline mt-2">
+                <span :class="[
+                       index === 0 ? 'text-blue-600 dark:text-blue-400' :
+                       index === 1 ? 'text-green-600 dark:text-green-400' :
+                       index === 2 ? 'text-yellow-600 dark:text-yellow-400' :
+                       'text-purple-600 dark:text-purple-400'
+                     ]"
+                      class="text-2xl font-bold mr-2">{{ formatNumber(stat.totalValue) }}</span>
+            <span class="text-sm text-gray-500 dark:text-gray-400">总计</span>
+          </div>
+
+          <!-- 本月数据 -->
+          <div class="mt-3 flex items-center">
+            <div class="text-sm text-gray-600 dark:text-gray-300">{{ stat.totalTitle }}
+              <span :class="[
+                         index === 0 ? 'text-blue-600 dark:text-blue-400' :
+                         index === 1 ? 'text-green-600 dark:text-green-400' :
+                         index === 2 ? 'text-yellow-600 dark:text-yellow-400' :
+                         'text-purple-600 dark:text-purple-400'
+                       ]"
+                    class="font-semibold">{{ formatNumber(stat.value) }}</span>
+            </div>
+            <div
+              class="ml-auto bg-green-100 dark:bg-green-900/30 py-0.5 px-2 rounded-full text-xs text-green-700 dark:text-green-400">
+              +{{ Math.floor(Math.random() * 10) + 5 }}%
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 主要内容区域 -->
@@ -569,11 +770,11 @@ onMounted(() => {
         <div class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <!-- 分类占比 -->
           <div class="apple-card">
-            <div class="flex items-center mb-3">
-              <el-icon :size="20" class="mr-2">
+            <div class="card-title">
+              <el-icon :size="20" class="card-title-icon">
                 <PieChart/>
               </el-icon>
-              <h2 class="text-lg font-medium">博客分类占比</h2>
+              <h2 class="card-title-text">博客分类占比</h2>
             </div>
             <div class="pie-chart-container">
               <!-- 简化的饼图展示 -->
@@ -610,11 +811,11 @@ onMounted(() => {
 
           <!-- 流量来源 -->
           <div class="apple-card">
-            <div class="flex items-center mb-3">
-              <el-icon :size="20" class="mr-2">
+            <div class="card-title">
+              <el-icon :size="20" class="card-title-icon">
                 <DataAnalysis/>
               </el-icon>
-              <h2 class="text-lg font-medium">阅读量来源</h2>
+              <h2 class="card-title-text">阅读量来源</h2>
             </div>
             <!-- 线条样式的水平条形图 -->
             <div class="mt-4 space-y-4">
@@ -636,11 +837,11 @@ onMounted(() => {
 
         <!-- 目标完成情况 -->
         <div class="apple-card mb-4">
-          <div class="flex items-center mb-3">
-            <el-icon :size="20" class="mr-2">
+          <div class="card-title">
+            <el-icon :size="20" class="card-title-icon">
               <TrendCharts/>
             </el-icon>
-            <h2 class="text-lg font-medium">本月目标完成</h2>
+            <h2 class="card-title-text">本月目标完成</h2>
           </div>
           <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div v-for="(goal, key) in goalData" :key="key" class="goal-card">
@@ -686,62 +887,148 @@ onMounted(() => {
 
         <!-- SEO数据概览 -->
         <div class="apple-card mb-4">
-          <div class="flex items-center mb-3">
-            <el-icon :size="20" class="mr-2">
+          <div class="card-title">
+            <el-icon :size="20" class="card-title-icon">
               <Monitor/>
             </el-icon>
-            <h2 class="text-lg font-medium">SEO概览</h2>
+            <h2 class="card-title-text">SEO概览</h2>
           </div>
 
-          <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div class="seo-stat text-center">
-              <div class="text-sm text-gray-500">自然流量</div>
-              <div class="font-semibold text-lg">{{ formatNumber(seoData.organicTraffic) }}</div>
-              <div class="text-xs text-green-500">↑8.4%</div>
-            </div>
-            <div class="seo-stat text-center">
-              <div class="text-sm text-gray-500">反向链接</div>
-              <div class="font-semibold text-lg">{{ formatNumber(seoData.backlinks) }}</div>
-              <div class="text-xs text-green-500">↑3.2%</div>
-            </div>
-            <div class="seo-stat text-center">
-              <div class="text-sm text-gray-500">平均排名</div>
-              <div class="font-semibold text-lg">{{ seoData.averageRank }}</div>
-              <div class="text-xs text-green-500">↓0.7</div>
-            </div>
-            <div class="seo-stat text-center">
-              <div class="text-sm text-gray-500">展示次数</div>
-              <div class="font-semibold text-lg">{{ formatNumber(seoData.impressions) }}</div>
-              <div class="text-xs text-green-500">↑11.2%</div>
-            </div>
-            <div class="seo-stat text-center">
-              <div class="text-sm text-gray-500">点击次数</div>
-              <div class="font-semibold text-lg">{{ formatNumber(seoData.clicks) }}</div>
-              <div class="text-xs text-green-500">↑6.8%</div>
-            </div>
-          </div>
-
-          <!-- 热门关键词 -->
-          <div class="mt-4">
-            <h3 class="text-sm font-medium text-gray-500 mb-2">热门关键词</h3>
-            <div class="space-y-2">
-              <div v-for="(keyword, index) in topKeywords" :key="index"
-                   class="flex items-center justify-between p-2 rounded-lg backdrop-blur-sm border border-gray-100 dark:border-gray-700">
-                <div class="flex items-center">
+          <!-- 新设计的SEO数据卡片布局 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+            <div
+              class="seo-data-card bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800 relative overflow-hidden">
+              <!-- 装饰元素 -->
+              <div
+                class="absolute -right-6 -top-6 w-16 h-16 rounded-full bg-blue-200 dark:bg-blue-700 opacity-20"></div>
+              <div class="relative">
+                <div class="flex justify-between items-center mb-2">
+                  <div class="text-sm text-gray-600 dark:text-gray-300">自然流量</div>
                   <div
-                    :class="keyword.rank <= 3 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'"
-                    class="w-6 h-6 flex items-center justify-center rounded-full">
-                    {{ keyword.rank }}
+                    class="text-xs text-green-500 bg-green-50 dark:bg-green-900/20 py-0.5 px-2 rounded-full flex items-center">
+                    <span class="mr-0.5">↑8.4%</span>
                   </div>
-                  <span>{{ keyword.word }}</span>
+                </div>
+                <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                  {{ formatNumber(seoData.organicTraffic) }}
+                </div>
+                <div class="flex items-center mt-1">
+                  <el-icon :size="14" class="mr-1 text-blue-500">
+                    <TrendCharts/>
+                  </el-icon>
+                  <span class="text-xs text-gray-500">较上月增长 {{
+                      Math.floor(seoData.organicTraffic * 0.084)
+                    }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="seo-data-card bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl p-4 border border-green-200 dark:border-green-800 relative overflow-hidden">
+              <!-- 装饰元素 -->
+              <div
+                class="absolute -right-6 -top-6 w-16 h-16 rounded-full bg-green-200 dark:bg-green-700 opacity-20"></div>
+              <div class="relative">
+                <div class="flex justify-between items-center mb-2">
+                  <div class="text-sm text-gray-600 dark:text-gray-300">展示次数</div>
+                  <div
+                    class="text-xs text-green-500 bg-green-50 dark:bg-green-900/20 py-0.5 px-2 rounded-full flex items-center">
+                    <span class="mr-0.5">↑11.2%</span>
+                  </div>
+                </div>
+                <div class="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {{ formatNumber(seoData.impressions) }}
+                </div>
+                <div class="flex items-center mt-1">
+                  <el-icon :size="14" class="mr-1 text-green-500">
+                    <View/>
+                  </el-icon>
+                  <span class="text-xs text-gray-500">点击率 {{
+                      Math.round(seoData.clicks / seoData.impressions * 100)
+                    }}%</span>
+                </div>
+              </div>
+          </div>
+
+            <div
+              class="seo-data-card bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl p-4 border border-purple-200 dark:border-purple-800 relative overflow-hidden">
+              <!-- 装饰元素 -->
+              <div
+                class="absolute -right-6 -top-6 w-16 h-16 rounded-full bg-purple-200 dark:bg-purple-700 opacity-20"></div>
+              <div class="relative">
+                <div class="flex justify-between items-center mb-2">
+                  <div class="text-sm text-gray-600 dark:text-gray-300">反向链接</div>
+                  <div
+                    class="text-xs text-green-500 bg-green-50 dark:bg-green-900/20 py-0.5 px-2 rounded-full flex items-center">
+                    <span class="mr-0.5">↑3.2%</span>
+                  </div>
+                </div>
+                <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                  {{ formatNumber(seoData.backlinks) }}
+                </div>
+                <div class="flex items-center mt-1">
+                  <el-icon :size="14" class="mr-1 text-purple-500">
+                    <Share/>
+                  </el-icon>
+                  <span class="text-xs text-gray-500">高质量链接 {{
+                      Math.round(seoData.backlinks * 0.6)
+                    }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 热门关键词 - 新设计 -->
+          <div class="keyword-section">
+            <h3 class="text-sm font-medium text-gray-600 dark:text-gray-300 mb-3 flex items-center">
+              <el-icon :size="16" class="mr-1">
+                <ChatLineRound/>
+              </el-icon>
+              热门关键词
+            </h3>
+            <div class="grid grid-cols-1 gap-2">
+              <div v-for="(keyword, index) in topKeywords" :key="index"
+                   :class="{
+                         'border-blue-500 dark:border-blue-400 hover:bg-blue-50/30 dark:hover:bg-blue-900/10': keyword.rank === 1,
+                         'border-indigo-500 dark:border-indigo-400 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10': keyword.rank === 2,
+                         'border-green-500 dark:border-green-400 hover:bg-green-50/30 dark:hover:bg-green-900/10': keyword.rank === 3,
+                         'border-gray-300 dark:border-gray-500 hover:bg-gray-50/30 dark:hover:bg-gray-700/20': keyword.rank > 3
+                       }"
+                   class="keyword-item flex items-center rounded-lg p-3 transition-all hover:shadow-md border-l-4">
+                <div
+                  :class="{
+                           'bg-blue-100/70 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400': keyword.rank === 1,
+                           'bg-indigo-100/70 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400': keyword.rank === 2,
+                           'bg-green-100/70 text-green-600 dark:bg-green-900/30 dark:text-green-400': keyword.rank === 3,
+                           'bg-gray-100/70 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400': keyword.rank > 3
+                         }"
+                  class="rank-badge w-8 h-8 flex items-center justify-center rounded-lg mr-3 backdrop-blur-sm">
+                  <span class="font-semibold">{{ keyword.rank }}</span>
+                </div>
+                <div class="flex-grow">
+                  <div class="font-medium text-gray-800 dark:text-gray-200">{{ keyword.word }}</div>
+                  <div class="flex items-center text-xs text-gray-500 mt-1">
+                    <span
+                      class="bg-gray-100/60 dark:bg-gray-800/60 rounded-full px-2 py-0.5 backdrop-blur-sm">{{
+                        formatNumber(keyword.volume)
+                      }} 次/月</span>
+                  </div>
                 </div>
                 <div class="flex items-center">
-                  <span class="text-sm text-gray-500 mr-3">{{
-                      formatNumber(keyword.volume)
-                    }}/月</span>
-                  <span :class="keyword.change > 0 ? 'text-green-500' : 'text-red-500'">
-                    {{ keyword.change > 0 ? '↑' : '↓' }}{{ Math.abs(keyword.change) }}
-                  </span>
+                  <div
+                    :class="{
+                             'bg-green-50/70 dark:bg-green-900/20 text-green-600 dark:text-green-400': keyword.change > 0,
+                             'bg-red-50/70 dark:bg-red-900/20 text-red-600 dark:text-red-400': keyword.change < 0,
+                             'bg-gray-50/70 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400': keyword.change === 0
+                           }"
+                    class="change-badge flex items-center px-2 py-0.5 rounded-full text-xs ml-3 backdrop-blur-sm">
+                    <el-icon :size="14" class="mr-1">
+                      <TrendCharts v-if="keyword.change > 0"/>
+                      <Warning v-else-if="keyword.change < 0"/>
+                      <Position v-else/>
+                    </el-icon>
+                    <span>{{ keyword.change > 0 ? '+' : '' }}{{ keyword.change }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -750,33 +1037,44 @@ onMounted(() => {
 
         <!-- 热门文章列表 -->
         <div class="apple-card mb-4">
-          <div class="mb-4 flex items-center justify-between">
+          <div class="flex items-center justify-between mb-4">
             <div class="flex items-center">
-              <el-icon :size="20" class="mr-2">
+              <el-icon :size="20" class="card-title-icon">
                 <Document/>
               </el-icon>
-              <h2 class="text-lg font-medium">热门文章</h2>
+              <h2 class="card-title-text">热门文章</h2>
             </div>
-            <el-button plain size="small" type="info" @click="router.push('/posts/page')">查看所有
-            </el-button>
+            <div class="view-more-btn" @click="goToPostsPage">
+              <span
+                class="text-sm text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 cursor-pointer transition-colors">查看全部</span>
+            </div>
           </div>
-
-          <div class="popular-posts-list space-y-2">
+          <div class="popular-posts-list space-y-3">
             <div
               v-for="post in popularPosts"
               :key="post.id"
-              class="post-item flex rounded-lg p-3 transition-all hover:bg-gray-50 dark:hover:bg-gray-750"
+              class="post-item flex rounded-xl p-3 transition-all hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-100 dark:border-gray-700"
             >
               <div class="mr-3 flex-shrink-0">
-                <el-tag
-                  :type="post.id % 4 === 0 ? 'success' : post.id % 3 === 0 ? 'warning' : post.id % 2 === 0 ? 'info' : 'danger'"
-                  class="rounded-md"
-                  size="large">
-                  {{ post.category?.charAt(0) || 'B' }}
-                </el-tag>
+                <div :class="{
+                         'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400': post.id % 4 === 0,
+                         'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400': post.id % 3 === 0,
+                         'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400': post.id % 2 === 0,
+                         'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400': post.id % 5 === 0 || post.id % 1 === 0
+                       }"
+                     class="post-icon-wrapper w-12 h-12 rounded-lg flex items-center justify-center">
+                  <el-icon :size="24">
+                    <Document v-if="post.id % 4 === 0"/>
+                    <Reading v-else-if="post.id % 3 === 0"/>
+                    <Edit v-else-if="post.id % 2 === 0"/>
+                    <View v-else/>
+                  </el-icon>
+                </div>
               </div>
               <div class="flex-grow">
-                <h3 class="post-title font-medium">{{ post.title }}</h3>
+                <h3 class="post-title font-medium text-gray-900 dark:text-gray-100">{{
+                    post.title
+                  }}</h3>
                 <div class="mt-1 stats flex items-center space-x-3 text-xs text-gray-500">
                   <span class="flex items-center">
                     <el-icon class="mr-1"><View/></el-icon>{{ formatNumber(post.views) }}
@@ -790,10 +1088,20 @@ onMounted(() => {
                 </div>
               </div>
               <div class="ml-2 flex items-center">
-                <el-button-group>
-                  <el-button :icon="View" size="small" type="info" @click="viewPost(post.id)"/>
-                  <el-button :icon="Edit" size="small" type="success" @click="editPost(post.id)"/>
-                </el-button-group>
+                <div class="action-btn-group flex space-x-2">
+                  <div class="action-btn w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-500 dark:text-blue-400 flex items-center justify-center cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-800/30 transition-colors"
+                       @click="viewPost(post.id)">
+                    <el-icon :size="16">
+                      <View/>
+                    </el-icon>
+                  </div>
+                  <div class="action-btn w-8 h-8 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-500 dark:text-green-400 flex items-center justify-center cursor-pointer hover:bg-green-100 dark:hover:bg-green-800/30 transition-colors"
+                       @click="editPost(post.id)">
+                    <el-icon :size="16">
+                      <Edit/>
+                    </el-icon>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -801,11 +1109,11 @@ onMounted(() => {
 
         <!-- 最近动态 -->
         <div class="apple-card">
-          <div class="flex items-center mb-4">
-            <el-icon :size="20" class="mr-2">
+          <div class="card-title">
+            <el-icon :size="20" class="card-title-icon">
               <Bell/>
             </el-icon>
-            <h2 class="text-lg font-medium">最近动态</h2>
+            <h2 class="card-title-text">最近动态</h2>
           </div>
           <div class="recent-activities space-y-3">
             <div
@@ -834,35 +1142,40 @@ onMounted(() => {
       <div class="lg:col-span-4">
         <!-- 快捷操作 -->
         <div class="apple-card mb-4">
-          <div class="flex items-center mb-3">
-            <el-icon :size="20" class="mr-2">
+          <div class="card-title">
+            <el-icon :size="20" class="card-title-icon">
               <Lightning/>
             </el-icon>
-            <h2 class="text-lg font-medium">快捷操作</h2>
+            <h2 class="card-title-text">快捷操作</h2>
           </div>
-          <div class="grid grid-cols-3 gap-2">
+          <div class="grid grid-cols-3 gap-3">
             <div
               v-for="item in quickNavItems"
               :key="item.title"
-              :style="{ backgroundColor: `${item.color}10` }"
-              class="quick-nav-item cursor-pointer rounded-lg p-3 text-center transition-all hover:shadow-md"
+              :class="`bg-gradient-to-br from-${item.color}-50 to-${item.color}-100 dark:from-gray-800 dark:to-gray-700 border border-${item.color}-200 dark:border-gray-600`"
+              class="quick-nav-item cursor-pointer rounded-xl p-3 text-center transition-all hover:shadow-lg dark:border-gray-700 transform hover:scale-105"
               @click="navTo(item)"
             >
-              <el-icon :size="24" :style="{ color: item.color }" class="mb-2">
+              <div :class="`bg-${item.color}-100 dark:bg-gray-700 p-2 rounded-lg inline-flex mb-2`">
+                <el-icon :size="24" :style="{ color: item.color }" class="opacity-90">
                 <component :is="item.icon"/>
               </el-icon>
-              <div class="text-xs font-medium">{{ item.title }}</div>
+              </div>
+              <div class="text-sm font-medium text-gray-700 dark:text-gray-300">{{
+                  item.title
+                }}
+              </div>
             </div>
           </div>
         </div>
 
         <!-- 读者用户画像 -->
         <div class="apple-card mb-4">
-          <div class="flex items-center mb-3">
-            <el-icon :size="20" class="mr-2">
+          <div class="card-title">
+            <el-icon :size="20" class="card-title-icon">
               <DataAnalysis/>
             </el-icon>
-            <h2 class="text-lg font-medium">访问数据分析</h2>
+            <h2 class="card-title-text">访问数据分析</h2>
           </div>
 
           <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -1128,11 +1441,11 @@ onMounted(() => {
 
         <!-- 阅读时间分布 -->
         <div class="apple-card mb-4">
-          <div class="flex items-center mb-3">
-            <el-icon :size="20" class="mr-2">
+          <div class="card-title">
+            <el-icon :size="20" class="card-title-icon">
               <Clock/>
             </el-icon>
-            <h2 class="text-lg font-medium">阅读时间分布</h2>
+            <h2 class="card-title-text">阅读时间分布</h2>
           </div>
           <div class="read-time-container space-y-3">
             <div v-for="(item, index) in readTimeData" :key="index" class="read-time-item">
@@ -1150,95 +1463,167 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- Mac风格待办事项 -->
+        <!-- 苹果风格待办事项 -->
         <div class="apple-card mb-4">
-          <div class="flex items-center mb-3">
-            <el-icon :size="20" class="mr-2">
+          <div class="card-title">
+            <el-icon :size="20" class="card-title-icon">
               <CircleCheck/>
             </el-icon>
-            <h2 class="text-lg font-medium">待办事项</h2>
+            <h2 class="card-title-text">待办事项</h2>
           </div>
 
-          <div class="mac-todo-list">
-            <!-- 添加新任务 -->
-            <div class="add-todo mb-4">
-              <el-input
-                v-model="newTodoTitle"
-                class="mb-2 mac-input"
-                placeholder="添加新任务..."
-                @keyup.enter="addTodo({title: newTodoTitle, priority: newTodoPriority})"
-              >
-                <template #prefix>
-                  <el-icon>
-                    <Plus/>
-                  </el-icon>
-                </template>
-              </el-input>
-              <div class="flex items-center">
-                <span class="mr-2 text-xs text-gray-500">优先级:</span>
-                <el-radio-group v-model="newTodoPriority" size="small">
-                  <el-radio-button label="high">高</el-radio-button>
-                  <el-radio-button label="medium">中</el-radio-button>
-                  <el-radio-button label="low">低</el-radio-button>
-                </el-radio-group>
-                <el-button :icon="Plus" class="ml-auto" type="info"
-                           @click="addTodo({title: newTodoTitle, priority: newTodoPriority})">添加
-                </el-button>
-              </div>
-            </div>
-
-            <!-- 任务列表 -->
-            <div class="mac-todo-items space-y-1">
+          <div class="apple-todo-container">
+            <!-- 待办事项列表区域 -->
+            <div class="todo-list-area">
               <div
                 v-for="todo in todoItems"
                 :key="todo.id"
-                :class="[todo.completed ? 'bg-gray-50 dark:bg-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-750']"
-                class="mac-todo-item flex items-center rounded-lg p-3 transition-all"
+                :class="{'completed': todo.completed}"
+                class="apple-todo-item group"
               >
-                <el-checkbox
-                  v-model="todo.completed"
-                  :style="{ color: getPriorityColor(todo.priority) }"
-                  class="mr-3 mac-checkbox"
-                  @change="() => toggleTodoComplete(todo.id)"
-                />
-                <div class="flex-grow">
+                <!-- 选择框和主要内容 -->
+                <div class="todo-main-content">
                   <div
-                    :class="{'line-through opacity-60': todo.completed}"
-                    class="todo-title font-medium"
+                    :class="{
+                          'high-priority': todo.priority === 'high',
+                          'medium-priority': todo.priority === 'medium',
+                          'low-priority': todo.priority === 'low',
+                          'checked': todo.completed
+                        }"
+                    class="apple-todo-checkbox"
+                    @click="toggleTodoComplete(todo.id)"
                   >
-                    {{ todo.title }}
+                    <el-icon v-if="todo.completed" class="check-icon">
+                      <CircleCheck/>
+                    </el-icon>
                   </div>
-                  <div class="todo-meta mt-1 flex items-center space-x-2 text-xs text-gray-500">
-                    <el-tag
-                      :type="todo.priority === 'high' ? 'danger' : todo.priority === 'medium' ? 'warning' : 'success'"
-                      size="small">
-                      {{ getPriorityLabel(todo.priority) }}优先级
-                    </el-tag>
-                    <span class="flex items-center">
-                      <el-icon class="mr-1"><Calendar/></el-icon>
-                      {{ getDeadlineText(todo.deadline) }}
-                    </span>
-                  </div>
-                  <div v-if="todo.description" class="mt-1 text-xs text-gray-500">
-                    {{ todo.description }}
+
+                  <div class="todo-content" @click="toggleTodoComplete(todo.id)">
+                    <div class="todo-title">{{ todo.title }}</div>
+                    <div class="todo-meta">
+                      <div class="meta-item deadline">
+                        <el-icon>
+                          <Calendar/>
+                        </el-icon>
+                        <span>{{ getDeadlineText(todo.deadline) }}</span>
+                      </div>
+                      <div class="meta-item priority">
+                        <el-icon>
+                          <Lightning/>
+                        </el-icon>
+                        <span>{{ getPriorityLabel(todo.priority) }}优先级</span>
+                      </div>
+                      <div v-if="todo.description" class="meta-item description">
+                        <el-icon>
+                          <ChatLineRound/>
+                        </el-icon>
+                        <span>{{ todo.description }}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <el-button
-                  :icon="Delete"
-                  circle
-                  class="opacity-70 hover:opacity-100"
-                  size="small"
-                  type="danger"
-                  @click="deleteTodo(todo.id)"
-                />
+
+                <!-- 操作按钮 -->
+                <div class="todo-actions">
+                  <button class="todo-delete-btn" @click="deleteTodo(todo.id)">
+                    <el-icon>
+                      <Delete/>
+                    </el-icon>
+                  </button>
+                </div>
               </div>
 
-              <div v-if="todoItems.length === 0"
-                   class="empty-state rounded-lg bg-gray-50 dark:bg-gray-700 p-4 text-center">
-                <el-icon :size="24" class="mb-2">
-                  <CircleCheck/>
-                </el-icon>
-                <div class="text-sm text-gray-500">暂无待办事项</div>
+              <!-- 空状态展示 -->
+              <div v-if="todoItems.length === 0" class="apple-todo-empty-state">
+                <div class="empty-icon">
+                  <el-icon>
+                    <CircleCheck/>
+                  </el-icon>
+                </div>
+                <div class="empty-message">
+                  <div class="primary">所有任务已完成</div>
+                  <div class="secondary">添加新任务来提升工作效率</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 添加新任务区域 -->
+            <div class="add-todo-area">
+              <div class="add-todo-input-container">
+                <div
+                  :class="{
+                        'high-priority': newTodoPriority === 'high',
+                        'medium-priority': newTodoPriority === 'medium',
+                        'low-priority': newTodoPriority === 'low'
+                      }"
+                  class="apple-todo-checkbox add"
+                >
+                  <el-icon>
+                    <Plus/>
+                  </el-icon>
+                </div>
+
+                <input
+                  v-model="newTodoTitle"
+                  class="add-todo-input"
+                  placeholder="添加新任务..."
+                  @keyup.enter="addNewTodo"
+                />
+                  </div>
+
+              <div class="add-todo-options">
+                <div class="option-group">
+                  <label>优先级</label>
+                  <div class="priority-options">
+                    <button
+                      :class="{'active': newTodoPriority === 'high'}"
+                      class="priority-option high"
+                      @click="newTodoPriority = 'high'"
+                    >
+                      高
+                    </button>
+                    <button
+                      :class="{'active': newTodoPriority === 'medium'}"
+                      class="priority-option medium"
+                      @click="newTodoPriority = 'medium'"
+                    >
+                      中
+                    </button>
+                    <button
+                      :class="{'active': newTodoPriority === 'low'}"
+                      class="priority-option low"
+                      @click="newTodoPriority = 'low'"
+                    >
+                      低
+                    </button>
+                  </div>
+                </div>
+
+                <div class="option-group">
+                  <label>截止日期</label>
+                  <div class="date-selector">
+                    <el-date-picker
+                      v-model="newTodoDeadline"
+                      :clearable="false"
+                  :disabled-date="(time: Date) => time.getTime() < Date.now() - 8.64e7"
+                      class="apple-date-picker"
+                      format="MM/DD"
+                      size="small"
+                      type="date"
+                      value-format="x"
+                    />
+                  </div>
+              </div>
+
+                <div class="option-group add-btn-group">
+                  <button
+                    :disabled="!newTodoTitle.trim()"
+                    class="add-todo-btn"
+                    @click="addNewTodo"
+                  >
+                    添加
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1246,11 +1631,11 @@ onMounted(() => {
 
         <!-- 待发布文章 -->
         <div class="apple-card">
-          <div class="flex items-center mb-3">
-            <el-icon :size="20" class="mr-2">
+          <div class="card-title">
+            <el-icon :size="20" class="card-title-icon">
               <Calendar/>
             </el-icon>
-            <h2 class="text-lg font-medium">预定发布</h2>
+            <h2 class="card-title-text">预定发布</h2>
           </div>
 
           <!-- 优化预定发布展示 -->
@@ -1288,6 +1673,8 @@ onMounted(() => {
               <div class="text-sm text-gray-500">暂无计划发布的文章</div>
             </div>
           </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1295,33 +1682,170 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 更新字体为苹果风格 */
+:root {
+  --apple-font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+}
+
+html, body, button, input, select, textarea {
+  font-family: var(--apple-font);
+}
+
 .dashboard {
   background-color: var(--el-bg-color);
+  font-family: var(--apple-font);
 }
 
 .dark .dashboard {
   background-color: var(--el-bg-color-dark);
 }
 
+/* 优化苹果风格下拉菜单 */
+.apple-select :deep(.el-input__wrapper) {
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+  padding: 0 12px;
+  height: 32px;
+  transition: all 0.2s ease;
+}
+
+.dark .apple-select :deep(.el-input__wrapper) {
+  background-color: rgba(30, 30, 30, 0.8);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.apple-select :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.dark .apple-select :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+/* 优化苹果风格日期选择器 */
+.apple-date-picker :deep(.el-input__wrapper) {
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+  padding: 0 12px;
+  height: 32px;
+  transition: all 0.2s ease;
+}
+
+.dark .apple-date-picker :deep(.el-input__wrapper) {
+  background-color: rgba(30, 30, 30, 0.8);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.apple-date-picker :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.dark .apple-date-picker :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+/* 优化苹果风格按钮 */
+.apple-button {
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.apple-button:hover {
+  transform: translateY(-1px);
+}
+
+.apple-button:active {
+  transform: translateY(1px);
+}
+
+.welcome-card {
+  animation: slideDown 0.5s ease-out forwards;
+  transform-origin: top center;
+}
+
+@keyframes slideDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 头像旋转动画 */
+.avatar-ring {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* 统计卡片动画 */
+.stat-overview-card {
+  animation: fadeIn 0.6s ease-out forwards;
+  opacity: 0;
+}
+
+.stat-overview-card:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.stat-overview-card:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.stat-overview-card:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.stat-overview-card:nth-child(4) {
+  animation-delay: 0.4s;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 卡片悬停效果增强 */
+.stat-card, .apple-card {
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover, .apple-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+}
+
 /* 苹果风格卡片样式 */
 .apple-card {
-  background-color: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(10px);
-  border-radius: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  @apply bg-white dark:bg-gray-800 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-xl shadow-sm;
   padding: 20px;
   margin-bottom: 16px;
   transition: all 0.3s ease;
-  border: 1px solid rgba(220, 220, 220, 0.5);
-}
-
-.dark .apple-card {
-  background-color: rgba(40, 40, 40, 0.8);
-  border: 1px solid rgba(80, 80, 80, 0.3);
 }
 
 .apple-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  @apply shadow-md dark:shadow-gray-900/30;
   transform: translateY(-2px);
 }
 
@@ -1497,7 +2021,7 @@ onMounted(() => {
 @keyframes glow {
   0% {
     r: 3;
-    opacity: 0.8;
+    opacity: 0.7;
   }
   50% {
     r: 5;
@@ -1505,40 +2029,662 @@ onMounted(() => {
   }
   100% {
     r: 3;
-    opacity: 0.8;
+    opacity: 0.7;
   }
 }
 
-/* 苹果风格的按钮 */
-:deep(.el-button) {
-  border-radius: 8px;
+.action-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.action-button::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 70%);
+  opacity: 0;
+  transform: scale(0.5);
+  transition: transform 0.6s, opacity 0.6s;
+}
+
+.action-button:hover::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.quick-nav-item {
+  position: relative;
+  overflow: hidden;
+}
+
+.quick-nav-item::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1));
+  transform: translateX(-100%);
+  transition: transform 0.5s ease;
+}
+
+.quick-nav-item:hover::after {
+  transform: translateX(100%);
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top-color: var(--primary-color, #1890ff);
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 图表容器动画 */
+.chart-container {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.chart-container:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* 卡片统一悬浮动效 */
+.apple-card {
   transition: all 0.3s ease;
 }
 
-:deep(.el-button:hover) {
+.apple-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* 按钮波纹效果优化 */
+.action-button::before,
+.quick-nav-item::after {
+  pointer-events: none;
+}
+
+/* 卡片标题统一样式 */
+.card-title {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.card-title-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(64, 158, 255, 0.1);
+  color: var(--el-color-primary);
+  border-radius: 8px;
+  padding: 6px;
+  margin-right: 8px;
+}
+
+.dark .card-title-icon {
+  background: rgba(64, 158, 255, 0.2);
+}
+
+.card-title-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+/* "查看全部"按钮样式 */
+.view-more-btn {
+  transition: all 0.3s ease;
+}
+
+.view-more-btn:hover {
+  transform: translateX(2px);
+}
+
+/* SEO 概览区域样式 */
+.seo-data-card {
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.seo-data-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.05);
+}
+
+.keyword-item {
+  transition: all 0.25s ease;
+}
+
+.keyword-item:hover {
+  transform: translateX(2px);
+}
+
+.rank-badge {
+  transition: all 0.3s ease;
+}
+
+.keyword-item:hover .rank-badge {
+  transform: scale(1.05);
+}
+
+/* 待办事项区域样式 */
+.todo-container {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.modern-input :deep(.el-input__wrapper) {
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+  border-radius: 8px;
+  padding: 8px 12px;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.dark .modern-input :deep(.el-input__wrapper) {
+  background-color: rgba(30, 30, 30, 0.8);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.modern-input :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.dark .modern-input :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.todo-item {
+  transition: all 0.3s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.todo-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.todo-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.todo-checkbox {
+  transition: all 0.2s ease;
+}
+
+.todo-checkbox:hover {
+  transform: scale(1.1);
+}
+
+.delete-todo-btn {
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.delete-todo-btn:hover {
+  opacity: 1;
+}
+
+/* 苹果待办事项样式 */
+.apple-todo-container {
+  background-color: rgba(250, 250, 250, 0.8);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  backdrop-filter: blur(20px);
+  font-family: var(--apple-font);
+}
+
+.dark .apple-todo-container {
+  background-color: rgba(30, 30, 30, 0.6);
+}
+
+/* 待办事项列表区域 */
+.todo-list-area {
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+/* 待办事项条目 */
+.apple-todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  transition: background-color 0.2s ease;
+  position: relative;
+  margin: 1px 0;
+  border-radius: 8px;
+}
+
+.apple-todo-item:hover {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+.dark .apple-todo-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.apple-todo-item.completed .todo-title {
+  text-decoration: line-through;
+  color: #8e8e93;
+}
+
+/* 选择框和主要内容 */
+.todo-main-content {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+/* 苹果风格复选框 */
+.apple-todo-checkbox {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  margin-right: 12px;
+  border: 2px solid #d1d1d6;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  background-color: transparent;
+}
+
+.dark .apple-todo-checkbox {
+  border-color: #48484a;
+}
+
+.apple-todo-checkbox:hover {
+  transform: scale(1.05);
+}
+
+.apple-todo-checkbox.high-priority {
+  border-color: #ff3b30;
+}
+
+.apple-todo-checkbox.medium-priority {
+  border-color: #ff9500;
+}
+
+.apple-todo-checkbox.low-priority {
+  border-color: #34c759;
+}
+
+.apple-todo-checkbox.checked {
+  background-color: #007aff;
+  border-color: #007aff;
+}
+
+.dark .apple-todo-checkbox.checked {
+  background-color: #0a84ff;
+  border-color: #0a84ff;
+}
+
+.apple-todo-checkbox.checked.high-priority {
+  background-color: #ff3b30;
+  border-color: #ff3b30;
+}
+
+.apple-todo-checkbox.checked.medium-priority {
+  background-color: #ff9500;
+  border-color: #ff9500;
+}
+
+.apple-todo-checkbox.checked.low-priority {
+  background-color: #34c759;
+  border-color: #34c759;
+}
+
+.check-icon {
+  color: white;
+  font-size: 12px;
+}
+
+/* 待办内容 */
+.todo-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.todo-title {
+  font-size: 15px;
+  color: #000000;
+  margin-bottom: 4px;
+  font-weight: 400;
+  transition: color 0.2s ease;
+}
+
+.dark .todo-title {
+  color: #ffffff;
+}
+
+.todo-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: #8e8e93;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.meta-item.priority {
+  font-weight: 500;
+}
+
+.meta-item.deadline {
+  color: #007aff;
+}
+
+.dark .meta-item.deadline {
+  color: #0a84ff;
+}
+
+.meta-item.description {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* 操作按钮 */
+.todo-actions {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.apple-todo-item:hover .todo-actions {
+  opacity: 1;
+}
+
+.todo-delete-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dark .todo-delete-btn {
+  background-color: rgba(255, 69, 58, 0.2);
+  color: #ff453a;
+}
+
+.todo-delete-btn:hover {
+  background-color: rgba(255, 59, 48, 0.2);
+  transform: scale(1.05);
+}
+
+/* 空状态 */
+.apple-todo-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  text-align: center;
+}
+
+.empty-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: rgba(0, 122, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  color: #007aff;
+  font-size: 24px;
+}
+
+.dark .empty-icon {
+  background-color: rgba(10, 132, 255, 0.2);
+  color: #0a84ff;
+}
+
+.empty-message .primary {
+  font-size: 17px;
+  font-weight: 500;
+  color: #000000;
+  margin-bottom: 4px;
+}
+
+.empty-message .secondary {
+  font-size: 13px;
+  color: #8e8e93;
+}
+
+.dark .empty-message .primary {
+  color: #ffffff;
+}
+
+/* 添加新任务区域 */
+.add-todo-area {
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 16px;
+}
+
+.dark .add-todo-area {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.add-todo-input-container {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.apple-todo-checkbox.add {
+  background-color: rgba(0, 122, 255, 0.1);
+  border: none;
+  color: #007aff;
+}
+
+.dark .apple-todo-checkbox.add {
+  background-color: rgba(10, 132, 255, 0.2);
+  color: #0a84ff;
+}
+
+.apple-todo-checkbox.add.high-priority {
+  background-color: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
+}
+
+.apple-todo-checkbox.add.medium-priority {
+  background-color: rgba(255, 149, 0, 0.1);
+  color: #ff9500;
+}
+
+.apple-todo-checkbox.add.low-priority {
+  background-color: rgba(52, 199, 89, 0.1);
+  color: #34c759;
+}
+
+.dark .apple-todo-checkbox.add.high-priority {
+  background-color: rgba(255, 69, 58, 0.2);
+  color: #ff453a;
+}
+
+.dark .apple-todo-checkbox.add.medium-priority {
+  background-color: rgba(255, 159, 10, 0.2);
+  color: #ff9f0a;
+}
+
+.dark .apple-todo-checkbox.add.low-priority {
+  background-color: rgba(48, 209, 88, 0.2);
+  color: #30d158;
+}
+
+.add-todo-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  color: #000000;
+  outline: none;
+  padding: 8px 0;
+  font-family: var(--apple-font);
+}
+
+.dark .add-todo-input {
+  color: #ffffff;
+}
+
+.add-todo-input::placeholder {
+  color: #8e8e93;
+}
+
+/* 添加任务选项 */
+.add-todo-options {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.option-group label {
+  font-size: 12px;
+  color: #8e8e93;
+  font-weight: 500;
+}
+
+/* 优先级选择器 */
+.priority-options {
+  display: flex;
+  gap: 6px;
+}
+
+.priority-option {
+  padding: 6px 12px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background-color: rgba(0, 0, 0, 0.05);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dark .priority-option {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.priority-option.active {
+  border-color: currentColor;
+  font-weight: 500;
+}
+
+.priority-option.high {
+  color: #ff3b30;
+}
+
+.priority-option.medium {
+  color: #ff9500;
+}
+
+.priority-option.low {
+  color: #34c759;
+}
+
+.dark .priority-option.high {
+  color: #ff453a;
+}
+
+.dark .priority-option.medium {
+  color: #ff9f0a;
+}
+
+.dark .priority-option.low {
+  color: #30d158;
+}
+
+/* 日期选择器 */
+.apple-date-picker {
+  width: 120px;
+}
+
+.apple-date-picker :deep(.el-input__wrapper) {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 14px;
+  box-shadow: none !important;
+  padding: 2px 12px;
+  height: 28px;
+}
+
+.dark .apple-date-picker :deep(.el-input__wrapper) {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* 添加按钮 */
+.add-btn-group {
+  margin-left: auto;
+}
+
+.add-todo-btn {
+  background-color: #007aff;
+  color: white;
+  border: none;
+  border-radius: 14px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dark .add-todo-btn {
+  background-color: #0a84ff;
+}
+
+.add-todo-btn:hover {
+  opacity: 0.9;
   transform: translateY(-1px);
 }
 
-:deep(.el-radio-button__inner) {
-  backdrop-filter: blur(5px);
+.add-todo-btn:disabled {
+  background-color: #c7c7cc;
+  cursor: not-allowed;
 }
 
-/* 苹果风格滚动条 */
-:deep(::-webkit-scrollbar) {
-  width: 8px;
-  height: 8px;
-}
-
-:deep(::-webkit-scrollbar-track) {
-  background: transparent;
-}
-
-:deep(::-webkit-scrollbar-thumb) {
-  background: rgba(180, 180, 180, 0.5);
-  border-radius: 10px;
-}
-
-:deep(::-webkit-scrollbar-thumb:hover) {
-  background: rgba(150, 150, 150, 0.7);
+.dark .add-todo-btn:disabled {
+  background-color: #48484a;
 }
 </style>
+
