@@ -205,7 +205,7 @@ import Components from 'unplugin-vue-components/vite'
 import AutoImport from 'unplugin-auto-import/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import ElementPlus from 'unplugin-element-plus/vite'
-import { createMonacoEditorPlugin } from 'vite-plugin-monaco-editor'
+import monacoEditorPlugin from 'vite-plugin-monaco-editor'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -220,7 +220,7 @@ export default defineConfig({
       resolvers: [ElementPlusResolver()],
     }),
     ElementPlus(),
-    createMonacoEditorPlugin({}),
+    monacoEditorPlugin({}),
   ],
   resolve: {
     alias: {
