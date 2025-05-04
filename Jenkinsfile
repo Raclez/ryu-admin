@@ -326,15 +326,10 @@ pipeline {
                 export default postcssConfig;
                 '''
                 
-                // 修改tsconfig.json引用路径
+                // 修改tsconfig.json引用路径和vite.config.mts
                 sh '''
                     if [ -f apps/web-ele/tsconfig.json ]; then
                         sed -i 's|"extends": "@vben/tsconfig/web-app.json"|"extends": "../../packages/@vben/tsconfig/web-app.json"|g' apps/web-ele/tsconfig.json
-                    fi
-                    
-                    # 检查和修复apps/web-ele/vite.config.mts中的alias
-                    if [ -f apps/web-ele/vite.config.mts ]; then
-                        sed -i '/"@vben-core\/composables"/a \\      "@vben-core/shared": fileURLToPath(new URL("../../packages/@core/shared/src/index.ts", import.meta.url)),' apps/web-ele/vite.config.mts
                     fi
                     
                     # 重新安装依赖
