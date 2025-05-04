@@ -14,6 +14,17 @@ WORKDIR /app
 COPY . /app
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
+
+# 先构建基础内部工具包
+RUN pnpm build --filter="@vben/tsconfig" --filter="@vben/vite-config" --filter="@vben/node-utils" --filter="@vben/tailwind-config" --filter="@vben-core/*"
+
+# 再构建其他内部包
+RUN pnpm build --filter=./internal --filter=./packages --filter="!./packages/**/*.spec.ts"
+
+# 构建effects目录下的包
+RUN pnpm build --filter=./packages/effects
+
+# 最后构建web-ele应用
 RUN cd apps/web-ele && pnpm build
 
 RUN echo "Builder Success 🎉"

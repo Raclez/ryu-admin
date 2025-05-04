@@ -124,18 +124,28 @@ pipeline {
             }
         }
 
+        stage('构建内部依赖') {
+            steps {
+                echo "构建内部依赖包..."
+                sh '''
+                    # 先构建基础内部工具包
+                    pnpm build --filter="@vben/tsconfig" --filter="@vben/vite-config" --filter="@vben/node-utils" --filter="@vben/tailwind-config" --filter="@vben-core/*"
+                    
+                    # 再构建其他内部包
+                    pnpm build --filter=./internal --filter=./packages --filter="!./packages/**/*.spec.ts"
+                    
+                    # 构建effects目录下的包
+                    pnpm build --filter=./packages/effects
+                '''
+            }
+        }
+
         stage('构建应用') {
             steps {
                 echo "构建web-ele应用..."
                 sh '''
                     # 构建web-ele应用
                     cd apps/web-ele && pnpm build
-                '''
-                
-                echo "构建其他应用（除docs外）..."
-                sh '''
-                    # 构建其他应用（除docs外）
-                    pnpm build --filter='!./docs'
                 '''
             }
         }
@@ -164,6 +174,17 @@ WORKDIR /app
 COPY . /app
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
+
+# 先构建基础内部工具包
+RUN pnpm build --filter="@vben/tsconfig" --filter="@vben/vite-config" --filter="@vben/node-utils" --filter="@vben/tailwind-config" --filter="@vben-core/*"
+
+# 再构建其他内部包
+RUN pnpm build --filter=./internal --filter=./packages --filter="!./packages/**/*.spec.ts"
+
+# 构建effects目录下的包
+RUN pnpm build --filter=./packages/effects
+
+# 最后构建web-ele应用
 RUN cd apps/web-ele && pnpm build
 
 RUN echo "Builder Success 🎉"
