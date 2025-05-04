@@ -99,6 +99,7 @@ pipeline {
                     mkdir -p packages/@core/ui-kit/tabs-ui/src
                     mkdir -p packages/@core/base/icons/src
                     mkdir -p packages/@core/composables/src
+                    mkdir -p internal/tailwind-config/dist
                 '''
                 
                 // 创建@vben/tsconfig包
@@ -188,6 +189,45 @@ pipeline {
                 export default {};
                 '''
                 
+                // 创建tailwind-config包
+                writeFile file: 'internal/tailwind-config/package.json', text: '''
+                {
+                    "name": "@internal/tailwind-config",
+                    "version": "1.0.0",
+                    "main": "dist/postcss.config.mjs",
+                    "files": ["dist"]
+                }
+                '''
+                
+                writeFile file: 'internal/tailwind-config/dist/postcss.config.mjs', text: '''
+                export default {
+                    plugins: {
+                        tailwindcss: {},
+                        autoprefixer: {},
+                    }
+                };
+                '''
+                
+                // 创建简单的tailwind配置
+                writeFile file: 'internal/tailwind-config/dist/tailwind.config.js', text: '''
+                module.exports = {
+                    content: [
+                        "./src/**/*.{vue,js,ts,jsx,tsx}",
+                    ],
+                    theme: {
+                        extend: {},
+                    },
+                    plugins: [],
+                }
+                '''
+                
+                // 修改postcss.config.mjs文件
+                writeFile file: 'apps/web-ele/postcss.config.mjs', text: '''
+                import postcssConfig from '../../internal/tailwind-config/dist/postcss.config.mjs';
+
+                export default postcssConfig;
+                '''
+                
                 // 修改tsconfig.json引用路径
                 sh '''
                     if [ -f apps/web-ele/tsconfig.json ]; then
@@ -259,6 +299,13 @@ export default defineConfig({
                         sed -i 's|// export default routes;|export default routes;|g' apps/web-ele/src/views/features/routes.ts
                         sed -i 's|// const routes: RouteRecordRaw|const routes: RouteRecordRaw|g' apps/web-ele/src/views/features/routes.ts
                     fi
+                    
+                    # 检查是否需要安装tailwindcss和autoprefixer
+                    cd apps/web-ele
+                    if ! grep -q "tailwindcss" package.json; then
+                        pnpm add -D tailwindcss autoprefixer postcss
+                    fi
+                    cd ../..
                 '''
             }
         }
@@ -280,9 +327,22 @@ export default defineConfig({
                 // 确保所有依赖安装完成
                 sh 'pnpm install --no-frozen-lockfile'
                 
+                // 调试构建前的环境
+                sh '''
+                    echo "检查PostCSS配置文件..."
+                    ls -la apps/web-ele/postcss.config.mjs || echo "PostCSS配置不存在"
+                    ls -la internal/tailwind-config/dist/postcss.config.mjs || echo "TailwindCSS配置不存在"
+                    
+                    echo "检查依赖关系..."
+                    cat apps/web-ele/package.json | grep -A 10 dependencies || echo "无法查找依赖"
+                    
+                    echo "检查node_modules路径..."
+                    ls -la node_modules/.pnpm || echo "无法列出模块"
+                '''
+                
                 // 构建应用
                 dir('apps/web-ele') {
-                    sh 'pnpm run build'
+                    sh 'NODE_ENV=production pnpm run build'
                 }
 
                 // 检查构建结果
