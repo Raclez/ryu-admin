@@ -178,7 +178,7 @@ pipeline {
                     
                     # 修改tsconfig.json文件不使用扩展
                     if [ -f apps/web-ele/tsconfig.json ]; then
-                        sed -i 's/"extends": "@vben\\/tsconfig\\/web-app.json"/"extends": "../../packages\\/@vben\\/tsconfig\\/web-app.json"/g' apps/web-ele/tsconfig.json
+                        sed -i 's|"extends": "@vben/tsconfig/web-app.json"|"extends": "../../packages/@vben/tsconfig/web-app.json"|g' apps/web-ele/tsconfig.json
                     fi
                     
                     # 重新安装依赖
