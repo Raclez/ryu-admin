@@ -114,9 +114,75 @@ pipeline {
             }
         }
 
+        stage('安装依赖') {
+            steps {
+                echo "安装项目依赖..."
+                sh '''
+                    # 在根目录安装所有依赖
+                    pnpm install --frozen-lockfile
+                '''
+            }
+        }
+
+        stage('构建应用') {
+            steps {
+                echo "构建web-ele应用..."
+                sh '''
+                    # 构建web-ele应用
+                    pnpm build --filter=@vben/web-ele
+                '''
+                
+                echo "构建其他应用（除docs外）..."
+                sh '''
+                    # 构建其他应用（除docs外）
+                    pnpm build --filter=\!./docs
+                '''
+            }
+        }
+
         stage('构建Docker镜像') {
             steps {
                 echo "构建Docker镜像..."
+
+                // 修改Dockerfile确保正确使用构建结果
+                script {
+                    // 创建新的Dockerfile来使用web-ele的构建结果
+                    writeFile file: "scripts/deploy/Dockerfile.new", text: """
+FROM node:20-slim AS builder
+
+# --max-old-space-size
+ENV PNPM_HOME="/pnpm"
+ENV PATH="\$PNPM_HOME:\$PATH"
+ENV NODE_OPTIONS=--max-old-space-size=8192
+ENV TZ=Asia/Shanghai
+
+RUN corepack enable
+
+WORKDIR /app
+
+# copy package.json and pnpm-lock.yaml to workspace
+COPY . /app
+
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN pnpm build --filter=@vben/web-ele
+
+RUN echo "Builder Success 🎉"
+
+FROM nginx:stable-alpine AS production
+
+RUN echo "types { application/javascript js mjs; }" > /etc/nginx/conf.d/mjs.conf
+COPY --from=builder /app/apps/web-ele/dist /usr/share/nginx/html
+
+COPY --from=builder /app/scripts/deploy/nginx.conf /etc/nginx/nginx.conf
+
+EXPOSE 8080
+
+# start nginx
+CMD ["nginx", "-g", "daemon off;"]
+"""
+                    
+                    sh 'mv scripts/deploy/Dockerfile.new scripts/deploy/Dockerfile'
+                }
 
                 // 构建镜像
                 withCredentials([usernamePassword(credentialsId: '7bbd2f0b-5af4-4079-a15c-bc52037de966',
