@@ -14,7 +14,7 @@ WORKDIR /app
 COPY . /app
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
-RUN pnpm build --filter=@vben/web-ele
+RUN cd apps/web-ele && pnpm build
 
 RUN echo "Builder Success 🎉"
 

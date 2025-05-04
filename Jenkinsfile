@@ -129,7 +129,7 @@ pipeline {
                 echo "构建web-ele应用..."
                 sh '''
                     # 构建web-ele应用
-                    pnpm build --filter=@vben/web-ele
+                    cd apps/web-ele && pnpm build
                 '''
                 
                 echo "构建其他应用（除docs外）..."
@@ -163,8 +163,8 @@ WORKDIR /app
 # copy package.json and pnpm-lock.yaml to workspace
 COPY . /app
 
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
-RUN pnpm build --filter=@vben/web-ele
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
+RUN cd apps/web-ele && pnpm build
 
 RUN echo "Builder Success 🎉"
 
