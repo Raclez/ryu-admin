@@ -88,6 +88,64 @@ pipeline {
             }
         }
 
+        stage('安装缺失依赖') {
+            steps {
+                echo "安装缺失的依赖包..."
+                
+                // 创建必要的配置包
+                sh '''
+                    # 创建tsconfig包
+                    mkdir -p packages/@vben/tsconfig
+                    echo '{
+                        "name": "@vben/tsconfig",
+                        "version": "1.0.0",
+                        "main": "index.js",
+                        "files": ["*.json"]
+                    }' > packages/@vben/tsconfig/package.json
+                    
+                    # 创建web-app.json配置
+                    echo '{
+                        "compilerOptions": {
+                            "target": "ES2022",
+                            "module": "ESNext",
+                            "moduleResolution": "bundler",
+                            "strict": true,
+                            "jsx": "preserve",
+                            "sourceMap": true,
+                            "resolveJsonModule": true,
+                            "esModuleInterop": true,
+                            "lib": ["ES2022", "DOM"],
+                            "skipLibCheck": true
+                        }
+                    }' > packages/@vben/tsconfig/web-app.json
+                    
+                    # 创建vite-config包
+                    mkdir -p packages/@vben/vite-config
+                    echo '{
+                        "name": "@vben/vite-config",
+                        "version": "1.0.0",
+                        "main": "src/index.ts",
+                        "module": "src/index.ts",
+                        "types": "src/index.ts"
+                    }' > packages/@vben/vite-config/package.json
+                    
+                    mkdir -p packages/@vben/vite-config/src
+                    echo 'export const createViteConfig = () => ({
+                        plugins: [],
+                        resolve: {
+                            alias: {}
+                        },
+                        build: {
+                            target: "es2022"
+                        }
+                    });' > packages/@vben/vite-config/src/index.ts
+                    
+                    # 重新安装依赖
+                    pnpm install --no-frozen-lockfile
+                '''
+            }
+        }
+
         stage('代码修复') {
             steps {
                 echo "执行代码修复..."
@@ -157,6 +215,11 @@ pipeline {
         stage('构建应用') {
             steps {
                 echo "构建应用..."
+                
+                // 先在根目录确保所有依赖安装完成
+                sh 'pnpm install --no-frozen-lockfile'
+                
+                // 然后进入web-ele目录构建
                 dir('apps/web-ele') {
                     sh 'pnpm run build'
                 }
