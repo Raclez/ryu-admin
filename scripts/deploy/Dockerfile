@@ -88,14 +88,19 @@ RUN echo '{\
   "main": "src/index.js"\
 }' > packages/@vben/vite-config/package.json
 
-RUN echo 'import { defineConfig as viteDefineConfig } from "vite";\n\
-export function defineConfig(fn) {\
-  return async () => {\
-    const config = await fn();\
-    return viteDefineConfig(config.vite);\
-  };\
-}\n\
-export default defineConfig;' > packages/@vben/vite-config/src/index.js
+# 使用多行写入的方式避免Dockerfile解析出错
+RUN cat > packages/@vben/vite-config/src/index.js << 'EOF'
+import { defineConfig as viteDefineConfig } from "vite";
+
+function defineConfig(fn) {
+  return async () => {
+    const config = await fn();
+    return viteDefineConfig(config.vite);
+  };
+}
+
+export default defineConfig;
+EOF
 
 # 创建缺失的types包
 RUN mkdir -p packages/@vben/types
@@ -105,134 +110,142 @@ RUN echo '{\
   "types": "global.d.ts"\
 }' > packages/@vben/types/package.json
 
-RUN echo '// 全局类型定义\
-declare global {\
-  interface Window {\
-    [key: string]: any;\
-  }\
-}' > packages/@vben/types/global.d.ts
+RUN cat > packages/@vben/types/global.d.ts << 'EOF'
+// 全局类型定义
+declare global {
+  interface Window {
+    [key: string]: any;
+  }
+}
+EOF
 
 # 确保@vben-core/shared/cache目录存在并创建必要的文件
 RUN mkdir -p packages/@core/base/shared/src/cache
-RUN echo '// 缓存实现\
-import { createStorage } from "../utils/storage";\
-\
+
+RUN cat > packages/@core/base/shared/src/cache/index.ts << 'EOF'
+// 缓存实现
+import { createStorage } from "../utils/storage";
+
 // 默认缓存时间
-export const DEFAULT_CACHE_TIME = 60 * 60 * 24 * 7; // 7天\
-\
+export const DEFAULT_CACHE_TIME = 60 * 60 * 24 * 7; // 7天
+
 // 创建localStorage缓存
-export const createLocalStorage = (options = {}) => {\
-  return createStorage({\
-    storage: localStorage,\
-    ...options,\
-  });\
-};\
-\
+export const createLocalStorage = (options = {}) => {
+  return createStorage({
+    storage: localStorage,
+    ...options,
+  });
+};
+
 // 创建sessionStorage缓存
-export const createSessionStorage = (options = {}) => {\
-  return createStorage({\
-    storage: sessionStorage,\
-    ...options,\
-  });\
-};\
-\
-export const defaultCache = createLocalStorage();\
-\
+export const createSessionStorage = (options = {}) => {
+  return createStorage({
+    storage: sessionStorage,
+    ...options,
+  });
+};
+
+export const defaultCache = createLocalStorage();
+
 // 导出常用的存储操作方法
-export class Cache {\
-  private cache: ReturnType<typeof createStorage>;\
-\
-  constructor(storage = defaultCache) {\
-    this.cache = storage;\
-  }\
-\
-  get<T = any>(key: string, def: T | null = null): T {\
-    return this.cache.get(key) || def;\
-  }\
-\
-  set(key: string, value: any, expire = DEFAULT_CACHE_TIME) {\
-    this.cache.set(key, value, expire);\
-  }\
-\
-  remove(key: string) {\
-    this.cache.remove(key);\
-  }\
-\
-  clear() {\
-    this.cache.clear();\
-  }\
-}' > packages/@core/base/shared/src/cache/index.ts
+export class Cache {
+  private cache: ReturnType<typeof createStorage>;
+
+  constructor(storage = defaultCache) {
+    this.cache = storage;
+  }
+
+  get<T = any>(key: string, def: T | null = null): T {
+    return this.cache.get(key) || def;
+  }
+
+  set(key: string, value: any, expire = DEFAULT_CACHE_TIME) {
+    this.cache.set(key, value, expire);
+  }
+
+  remove(key: string) {
+    this.cache.remove(key);
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+}
+EOF
 
 # 确保utils目录下有storage.ts文件
 RUN mkdir -p packages/@core/base/shared/src/utils
-RUN echo '// 存储工具函数\
-export interface StorageOption {\
-  storage: Storage;\
-  prefix?: string;\
-}\
-\
-export interface Storage {\
-  getItem(key: string): string | null;\
-  setItem(key: string, value: string): void;\
-  removeItem(key: string): void;\
-  clear(): void;\
-}\
-\
-export interface CreateStorageParams extends StorageOption {\
-  timeout?: number;\
-}\
-\
-export function createStorage({\
-  storage = localStorage,\
-  prefix = "",\
-  timeout = 0,\
-}: Partial<CreateStorageParams> = {}) {\
-  function getKey(key: string) {\
-    return `${prefix}${key}`.toUpperCase();\
-  }\
-\
-  function set(key: string, value: any, expire = timeout) {\
-    const stringData = JSON.stringify({\
-      value,\
-      expire: expire !== 0 ? new Date().getTime() + expire * 1000 : 0,\
-    });\
-    storage.setItem(getKey(key), stringData);\
-  }\
-\
-  function get(key: string) {\
-    const item = storage.getItem(getKey(key));\
-    if (!item) return null;\
-\
-    try {\
-      const data = JSON.parse(item);\
-      const { value, expire } = data;\
-      // 无过期时间或者未过期返回缓存的值\
-      if (expire === 0 || expire > new Date().getTime()) {\
-        return value;\
-      }\
-      // 过期则删除\
-      remove(key);\
-      return null;\
-    } catch (e) {\
-      return null;\
-    }\
-  }\
-\
-  function remove(key: string) {\
-    storage.removeItem(getKey(key));\
-  }\
-\
-  function clear() {\
-    storage.clear();\
-  }\
-\
-  return {\
-    set,\
-    get,\
-    remove,\
-    clear,\
-  };\
-}' > packages/@core/base/shared/src/utils/storage.ts
+
+RUN cat > packages/@core/base/shared/src/utils/storage.ts << 'EOF'
+// 存储工具函数
+export interface StorageOption {
+  storage: Storage;
+  prefix?: string;
+}
+
+export interface Storage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+  clear(): void;
+}
+
+export interface CreateStorageParams extends StorageOption {
+  timeout?: number;
+}
+
+export function createStorage({
+  storage = localStorage,
+  prefix = "",
+  timeout = 0,
+}: Partial<CreateStorageParams> = {}) {
+  function getKey(key: string) {
+    return `${prefix}${key}`.toUpperCase();
+  }
+
+  function set(key: string, value: any, expire = timeout) {
+    const stringData = JSON.stringify({
+      value,
+      expire: expire !== 0 ? new Date().getTime() + expire * 1000 : 0,
+    });
+    storage.setItem(getKey(key), stringData);
+  }
+
+  function get(key: string) {
+    const item = storage.getItem(getKey(key));
+    if (!item) return null;
+
+    try {
+      const data = JSON.parse(item);
+      const { value, expire } = data;
+      // 无过期时间或者未过期返回缓存的值
+      if (expire === 0 || expire > new Date().getTime()) {
+        return value;
+      }
+      // 过期则删除
+      remove(key);
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function remove(key: string) {
+    storage.removeItem(getKey(key));
+  }
+
+  function clear() {
+    storage.clear();
+  }
+
+  return {
+    set,
+    get,
+    remove,
+    clear,
+  };
+}
+EOF
 
 # 重新链接依赖
 RUN pnpm install --no-frozen-lockfile
