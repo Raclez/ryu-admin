@@ -13,7 +13,7 @@ WORKDIR /app
 # copy package.json and pnpm-lock.yaml to workspace
 COPY . /app
 
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
 RUN pnpm build --filter=@vben/web-ele
 
 RUN echo "Builder Success 🎉"

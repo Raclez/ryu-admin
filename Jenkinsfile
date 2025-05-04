@@ -118,8 +118,8 @@ pipeline {
             steps {
                 echo "安装项目依赖..."
                 sh '''
-                    # 在根目录安装所有依赖
-                    pnpm install --frozen-lockfile
+                    # 在根目录安装所有依赖，允许更新锁文件
+                    pnpm install --no-frozen-lockfile
                 '''
             }
         }
