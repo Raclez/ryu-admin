@@ -135,7 +135,7 @@ pipeline {
                 echo "构建其他应用（除docs外）..."
                 sh '''
                     # 构建其他应用（除docs外）
-                    pnpm build --filter=\!./docs
+                    pnpm build --filter='!./docs'
                 '''
             }
         }
