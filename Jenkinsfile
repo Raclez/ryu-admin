@@ -94,8 +94,21 @@ pipeline {
                 
                 // 创建必要的配置包
                 sh '''
-                    # 创建tsconfig包
+                    # 检查vite配置和tsconfig文件的内容
+                    echo "查看vite.config.mts文件内容："
+                    cat apps/web-ele/vite.config.mts || echo "无法找到vite.config.mts文件"
+                    
+                    echo "查看tsconfig.json文件内容："
+                    cat apps/web-ele/tsconfig.json || echo "无法找到tsconfig.json文件"
+                    
+                    # 克隆packages目录结构
                     mkdir -p packages/@vben/tsconfig
+                    mkdir -p packages/@vben/vite-config/src
+                    mkdir -p packages/@core/ui-kit/tabs-ui/src
+                    mkdir -p packages/@core/base/icons/src
+                    mkdir -p packages/@core/composables/src
+                    
+                    # 创建tsconfig包
                     echo '{
                         "name": "@vben/tsconfig",
                         "version": "1.0.0",
@@ -120,7 +133,6 @@ pipeline {
                     }' > packages/@vben/tsconfig/web-app.json
                     
                     # 创建vite-config包
-                    mkdir -p packages/@vben/vite-config
                     echo '{
                         "name": "@vben/vite-config",
                         "version": "1.0.0",
@@ -129,7 +141,6 @@ pipeline {
                         "types": "src/index.ts"
                     }' > packages/@vben/vite-config/package.json
                     
-                    mkdir -p packages/@vben/vite-config/src
                     echo 'export const createViteConfig = () => ({
                         plugins: [],
                         resolve: {
@@ -139,6 +150,36 @@ pipeline {
                             target: "es2022"
                         }
                     });' > packages/@vben/vite-config/src/index.ts
+                    
+                    # 创建@vben-core相关包
+                    echo '{
+                        "name": "@vben-core/tabs-ui",
+                        "version": "1.0.0",
+                        "main": "src/index.ts"
+                    }' > packages/@core/ui-kit/tabs-ui/package.json
+                    
+                    echo 'export default {};' > packages/@core/ui-kit/tabs-ui/src/index.ts
+                    
+                    echo '{
+                        "name": "@vben-core/icons",
+                        "version": "1.0.0",
+                        "main": "src/index.ts"
+                    }' > packages/@core/base/icons/package.json
+                    
+                    echo 'export default {};' > packages/@core/base/icons/src/index.ts
+                    
+                    echo '{
+                        "name": "@vben-core/composables",
+                        "version": "1.0.0",
+                        "main": "src/index.ts"
+                    }' > packages/@core/composables/package.json
+                    
+                    echo 'export default {};' > packages/@core/composables/src/index.ts
+                    
+                    # 修改tsconfig.json文件不使用扩展
+                    if [ -f apps/web-ele/tsconfig.json ]; then
+                        sed -i 's/"extends": "@vben\\/tsconfig\\/web-app.json"/"extends": "../../packages\\/@vben\\/tsconfig\\/web-app.json"/g' apps/web-ele/tsconfig.json
+                    fi
                     
                     # 重新安装依赖
                     pnpm install --no-frozen-lockfile
@@ -150,42 +191,59 @@ pipeline {
             steps {
                 echo "执行代码修复..."
 
+                // 修复vite.config.mts文件
+                script {
+                    def viteConfigPath = "apps/web-ele/vite.config.mts"
+                    if (fileExists(viteConfigPath)) {
+                        writeFile file: viteConfigPath, text: '''
+import { fileURLToPath } from 'node:url'
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import vueJsx from '@vitejs/plugin-vue-jsx'
+import { createVueSetupExtend } from 'vite-plugin-vue-setup-extend'
+import Components from 'unplugin-vue-components/vite'
+import AutoImport from 'unplugin-auto-import/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import ElementPlus from 'unplugin-element-plus/vite'
+import { createMonacoEditorPlugin } from 'vite-plugin-monaco-editor'
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [
+    vue(),
+    vueJsx(),
+    createVueSetupExtend(),
+    Components({
+      resolvers: [ElementPlusResolver()],
+    }),
+    AutoImport({
+      resolvers: [ElementPlusResolver()],
+    }),
+    ElementPlus(),
+    createMonacoEditorPlugin({}),
+  ],
+  resolve: {
+    alias: {
+      "@vben-core/tabs-ui": fileURLToPath(new URL("../../packages/@core/ui-kit/tabs-ui/src/index.ts", import.meta.url)),
+      "@vben-core/icons": fileURLToPath(new URL("../../packages/@core/base/icons/src/index.ts", import.meta.url)),
+      "@vben-core/composables": fileURLToPath(new URL("../../packages/@core/composables/src/index.ts", import.meta.url))
+    }
+  },
+  build: {
+    target: "es2022"
+  }
+})
+'''
+                        echo "已替换vite.config.mts文件以简化构建配置"
+                    }
+                }
+
                 // 修复MenuList.vue中的重复parentId属性
                 script {
                     def menuListPath = "apps/web-ele/src/views/features/menu/MenuList.vue"
                     if (fileExists(menuListPath)) {
                         sh "sed -i '/parentId: selectedParent.value,/d' ${menuListPath}"
                         echo "已修复MenuList.vue中的重复parentId属性"
-                    }
-                }
-
-                // 修改vite配置，更新ES版本到ES2022支持顶级await
-                script {
-                    def viteConfigPath = "apps/web-ele/vite.config.mts"
-                    if (fileExists(viteConfigPath)) {
-                        sh "sed -i 's/target:.*es2020.*/target: \"es2022\"/' ${viteConfigPath}"
-                        echo "已更新构建目标到ES2022以支持顶级await"
-                    }
-                }
-
-                // 添加别名配置解决@vben-core包引用问题
-                script {
-                    def viteConfigPath = "apps/web-ele/vite.config.mts"
-                    if (fileExists(viteConfigPath)) {
-                        def aliasConfig = '''
-                        resolve: {
-                          alias: {
-                            "@vben-core/tabs-ui": fileURLToPath(new URL("../../packages/@core/ui-kit/tabs-ui/src/index.ts", import.meta.url)),
-                            "@vben-core/icons": fileURLToPath(new URL("../../packages/@core/base/icons/src/index.ts", import.meta.url)),
-                            "@vben-core/composables": fileURLToPath(new URL("../../packages/@core/composables/src/index.ts", import.meta.url))
-                          }
-                        },'''
-
-                        sh """
-                            sed -i '/build: {/a\\
-                            ${aliasConfig.replace('\n', '\\n')}' ${viteConfigPath}
-                        """
-                        echo "已添加别名配置以解决包引用问题"
                     }
                 }
 
