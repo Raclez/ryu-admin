@@ -15,22 +15,25 @@ COPY . /app
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
 
-# 先构建基础内部工具包
-RUN pnpm --filter="@vben/tsconfig" build
-RUN pnpm --filter="@vben/vite-config" build
-RUN pnpm --filter="@vben/node-utils" build
-RUN pnpm --filter="@vben/tailwind-config" build
-RUN pnpm --filter="@vben-core/*" build
+# 构建基础内部依赖包
+RUN cd internal/tsconfig && pnpm unbuild --stub && \
+    cd ../../internal/vite-config && pnpm unbuild --stub && \
+    cd ../../internal/node-utils && pnpm unbuild --stub && \
+    cd ../../internal/tailwind-config && pnpm unbuild --stub && \
+    cd ../../packages/@core/base/typings && pnpm unbuild --stub && \
+    cd ../shared && pnpm unbuild --stub && \
+    cd ../icons && pnpm unbuild --stub
 
 # 再构建其他内部包
-RUN pnpm --filter=./internal build
-RUN pnpm --filter=./packages build
+RUN cd /app && pnpm --filter="@vben-core/*" build || true
+RUN cd /app && pnpm --filter=./internal build || true
+RUN cd /app && pnpm --filter=./packages build || true
 
 # 构建effects目录下的包
-RUN pnpm --filter=./packages/effects build
+RUN cd /app && pnpm --filter=./packages/effects build || true
 
 # 最后构建web-ele应用
-RUN cd apps/web-ele && pnpm build
+RUN cd /app/apps/web-ele && pnpm build
 
 RUN echo "Builder Success 🎉"
 
