@@ -18,75 +18,89 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockf
 
 # 创建缺失的tsconfig包
 RUN mkdir -p packages/@vben/tsconfig
-RUN echo '{\
-  "name": "@vben/tsconfig",\
-  "version": "1.0.0",\
-  "main": "index.js",\
-  "files": ["*.json"]\
-}' > packages/@vben/tsconfig/package.json
+RUN cat > packages/@vben/tsconfig/package.json << 'EOF'
+{
+  "name": "@vben/tsconfig",
+  "version": "1.0.0",
+  "main": "index.js",
+  "files": ["*.json"]
+}
+EOF
 
 # 创建基础的tsconfig文件
-RUN echo '{\
-  "$schema": "https://json.schemastore.org/tsconfig",\
-  "display": "Default",\
-  "compilerOptions": {\
-    "target": "ESNext",\
-    "module": "ESNext",\
-    "moduleResolution": "Bundler",\
-    "strict": true,\
-    "esModuleInterop": true,\
-    "skipLibCheck": true,\
-    "forceConsistentCasingInFileNames": true\
-  }\
-}' > packages/@vben/tsconfig/base.json
+RUN cat > packages/@vben/tsconfig/base.json << 'EOF'
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Default",
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}
+EOF
 
-RUN echo '{\
-  "$schema": "https://json.schemastore.org/tsconfig",\
-  "display": "Web Application",\
-  "extends": "./base.json",\
-  "compilerOptions": {\
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],\
-    "types": ["vite/client"]\
-  }\
-}' > packages/@vben/tsconfig/web-app.json
+RUN cat > packages/@vben/tsconfig/web-app.json << 'EOF'
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Web Application",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"]
+  }
+}
+EOF
 
-RUN echo '{\
-  "$schema": "https://json.schemastore.org/tsconfig",\
-  "display": "Web",\
-  "extends": "./base.json",\
-  "compilerOptions": {\
-    "lib": ["ESNext", "DOM", "DOM.Iterable"]\
-  }\
-}' > packages/@vben/tsconfig/web.json
+RUN cat > packages/@vben/tsconfig/web.json << 'EOF'
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Web",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+  }
+}
+EOF
 
-RUN echo '{\
-  "$schema": "https://json.schemastore.org/tsconfig",\
-  "display": "Node",\
-  "extends": "./base.json",\
-  "compilerOptions": {\
-    "module": "ESNext",\
-    "moduleResolution": "Bundler"\
-  }\
-}' > packages/@vben/tsconfig/node.json
+RUN cat > packages/@vben/tsconfig/node.json << 'EOF'
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Node",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
+  }
+}
+EOF
 
-RUN echo '{\
-  "$schema": "https://json.schemastore.org/tsconfig",\
-  "display": "Library",\
-  "extends": "./base.json",\
-  "compilerOptions": {\
-    "declaration": true,\
-    "declarationMap": true\
-  }\
-}' > packages/@vben/tsconfig/library.json
+RUN cat > packages/@vben/tsconfig/library.json << 'EOF'
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Library",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationMap": true
+  }
+}
+EOF
 
 # 创建缺失的vite-config包
 RUN mkdir -p packages/@vben/vite-config/src
-RUN echo '{\
-  "name": "@vben/vite-config",\
-  "version": "1.0.0",\
-  "type": "module",\
-  "main": "src/index.js"\
-}' > packages/@vben/vite-config/package.json
+RUN cat > packages/@vben/vite-config/package.json << 'EOF'
+{
+  "name": "@vben/vite-config",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.js"
+}
+EOF
 
 # 使用多行写入的方式避免Dockerfile解析出错
 RUN cat > packages/@vben/vite-config/src/index.js << 'EOF'
@@ -104,11 +118,13 @@ EOF
 
 # 创建缺失的types包
 RUN mkdir -p packages/@vben/types
-RUN echo '{\
-  "name": "@vben/types",\
-  "version": "1.0.0",\
-  "types": "global.d.ts"\
-}' > packages/@vben/types/package.json
+RUN cat > packages/@vben/types/package.json << 'EOF'
+{
+  "name": "@vben/types",
+  "version": "1.0.0",
+  "types": "global.d.ts"
+}
+EOF
 
 RUN cat > packages/@vben/types/global.d.ts << 'EOF'
 // 全局类型定义
