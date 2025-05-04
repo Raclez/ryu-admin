@@ -76,9 +76,9 @@ pipeline {
             }
         }
 
-        stage('构建应用') {
+        stage('准备构建环境') {
             steps {
-                echo "构建应用..."
+                echo "准备构建环境..."
                 
                 // 清理node_modules以避免潜在冲突
                 sh 'rm -rf node_modules'
@@ -102,20 +102,6 @@ pipeline {
                 // 准备fallback页面以防构建失败
                 sh 'mkdir -p apps/web-ele/dist'
                 sh 'echo "<html><body><h1>Admin Dashboard</h1></body></html>" > apps/web-ele/dist/index.html'
-                
-                // 在根目录执行构建命令，添加--ignore-scripts跳过预构建脚本
-                sh '''
-                    cd apps/web-ele
-                    NODE_ENV=production pnpm run build --ignore-scripts || echo "构建失败，使用fallback页面"
-                '''
-                
-                // 检查构建结果
-                script {
-                    if (!fileExists('apps/web-ele/dist/index.html')) {
-                        echo "构建结果可能不完整，确保至少有一个index.html文件"
-                        sh 'echo "<html><body><h1>Admin Dashboard</h1></body></html>" > apps/web-ele/dist/index.html'
-                    }
-                }
             }
         }
 
@@ -128,12 +114,6 @@ pipeline {
                     # 移除nginx.conf中多余的分号
                     sed -i 's/;\\s*add_header/add_header/g' scripts/deploy/nginx.conf
                     sed -i 's/;\\s*if/if/g' scripts/deploy/nginx.conf
-                '''
-                
-                // 更新Dockerfile以使用正确的构建目录
-                sh '''
-                    # 修改Dockerfile中的构建目录路径
-                    sed -i 's|/app/playground/dist|/app/apps/web-ele/dist|g' scripts/deploy/Dockerfile
                 '''
                 
                 // 根据环境参数启用或禁用gzip压缩
@@ -173,7 +153,8 @@ pipeline {
                                                usernameVariable: 'DOCKER_USERNAME')]) {
                     sh """
                         echo ${DOCKER_PASSWORD} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USERNAME} --password-stdin
-                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f scripts/deploy/Dockerfile .
+                        # 使用DOCKER_BUILDKIT加速构建过程
+                        DOCKER_BUILDKIT=1 docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f scripts/deploy/Dockerfile .
                         docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:${params.TARGET_ENV}-latest
                         docker push ${IMAGE_NAME}:${IMAGE_TAG}
                         docker push ${IMAGE_NAME}:${params.TARGET_ENV}-latest

@@ -13,17 +13,19 @@ WORKDIR /app
 # copy package.json and pnpm-lock.yaml to workspace
 COPY . /app
 
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
-RUN pnpm run build --filter=\!./docs
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
+RUN cd apps/web-ele && pnpm run build
 
 RUN echo "Builder Success 🎉"
 
 FROM nginx:stable-alpine AS production
 
 RUN echo "types { application/javascript js mjs; }" > /etc/nginx/conf.d/mjs.conf
-COPY --from=builder /app/playground/dist /usr/share/nginx/html
+COPY --from=builder /app/apps/web-ele/dist /usr/share/nginx/html
 
 COPY --from=builder /app/scripts/deploy/nginx.conf /etc/nginx/nginx.conf
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 CMD wget -q -O /dev/null http://localhost:8080/health || exit 1
 
 EXPOSE 8080
 
