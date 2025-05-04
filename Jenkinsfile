@@ -63,7 +63,7 @@ pipeline {
                 script {
                     def apiUrl = params.TARGET_ENV == 'production' ? '/api' : "http://${params.TARGET_ENV}-api.vben.io/api"
 
-                    writeFile file: '.env.${params.TARGET_ENV}', text: """
+                    writeFile file: ".env.${params.TARGET_ENV}", text: """
                         # 构建环境变量
                         VITE_GLOB_APP_TITLE=${PROJECT_NAME}
                         VITE_GLOB_API_URL=${apiUrl}
@@ -88,95 +88,108 @@ pipeline {
             }
         }
 
-        stage('安装缺失依赖') {
+        stage('创建缺失依赖') {
             steps {
-                echo "安装缺失的依赖包..."
+                echo "创建缺失的依赖包..."
                 
-                // 创建必要的配置包
                 sh '''
-                    # 检查vite配置和tsconfig文件的内容
-                    echo "查看vite.config.mts文件内容："
-                    cat apps/web-ele/vite.config.mts || echo "无法找到vite.config.mts文件"
-                    
-                    echo "查看tsconfig.json文件内容："
-                    cat apps/web-ele/tsconfig.json || echo "无法找到tsconfig.json文件"
-                    
-                    # 克隆packages目录结构
+                    # 确保目录存在
                     mkdir -p packages/@vben/tsconfig
                     mkdir -p packages/@vben/vite-config/src
                     mkdir -p packages/@core/ui-kit/tabs-ui/src
                     mkdir -p packages/@core/base/icons/src
                     mkdir -p packages/@core/composables/src
-                    
-                    # 创建tsconfig包
-                    echo '{
-                        "name": "@vben/tsconfig",
-                        "version": "1.0.0",
-                        "main": "index.js",
-                        "files": ["*.json"]
-                    }' > packages/@vben/tsconfig/package.json
-                    
-                    # 创建web-app.json配置
-                    echo '{
-                        "compilerOptions": {
-                            "target": "ES2022",
-                            "module": "ESNext",
-                            "moduleResolution": "bundler",
-                            "strict": true,
-                            "jsx": "preserve",
-                            "sourceMap": true,
-                            "resolveJsonModule": true,
-                            "esModuleInterop": true,
-                            "lib": ["ES2022", "DOM"],
-                            "skipLibCheck": true
-                        }
-                    }' > packages/@vben/tsconfig/web-app.json
-                    
-                    # 创建vite-config包
-                    echo '{
-                        "name": "@vben/vite-config",
-                        "version": "1.0.0",
-                        "main": "src/index.ts",
-                        "module": "src/index.ts",
-                        "types": "src/index.ts"
-                    }' > packages/@vben/vite-config/package.json
-                    
-                    echo 'export const createViteConfig = () => ({
-                        plugins: [],
-                        resolve: {
-                            alias: {}
-                        },
-                        build: {
-                            target: "es2022"
-                        }
-                    });' > packages/@vben/vite-config/src/index.ts
-                    
-                    # 创建@vben-core相关包
-                    echo '{
-                        "name": "@vben-core/tabs-ui",
-                        "version": "1.0.0",
-                        "main": "src/index.ts"
-                    }' > packages/@core/ui-kit/tabs-ui/package.json
-                    
-                    echo 'export default {};' > packages/@core/ui-kit/tabs-ui/src/index.ts
-                    
-                    echo '{
-                        "name": "@vben-core/icons",
-                        "version": "1.0.0",
-                        "main": "src/index.ts"
-                    }' > packages/@core/base/icons/package.json
-                    
-                    echo 'export default {};' > packages/@core/base/icons/src/index.ts
-                    
-                    echo '{
-                        "name": "@vben-core/composables",
-                        "version": "1.0.0",
-                        "main": "src/index.ts"
-                    }' > packages/@core/composables/package.json
-                    
-                    echo 'export default {};' > packages/@core/composables/src/index.ts
-                    
-                    # 修改tsconfig.json文件不使用扩展
+                '''
+                
+                // 创建@vben/tsconfig包
+                writeFile file: 'packages/@vben/tsconfig/package.json', text: '''
+                {
+                    "name": "@vben/tsconfig",
+                    "version": "1.0.0",
+                    "main": "index.js",
+                    "files": ["*.json"]
+                }
+                '''
+                
+                writeFile file: 'packages/@vben/tsconfig/web-app.json', text: '''
+                {
+                    "compilerOptions": {
+                        "target": "ES2022",
+                        "module": "ESNext",
+                        "moduleResolution": "bundler",
+                        "strict": true,
+                        "jsx": "preserve",
+                        "sourceMap": true,
+                        "resolveJsonModule": true,
+                        "esModuleInterop": true,
+                        "lib": ["ES2022", "DOM"],
+                        "skipLibCheck": true
+                    }
+                }
+                '''
+                
+                // 创建@vben/vite-config包
+                writeFile file: 'packages/@vben/vite-config/package.json', text: '''
+                {
+                    "name": "@vben/vite-config",
+                    "version": "1.0.0",
+                    "main": "src/index.ts",
+                    "module": "src/index.ts",
+                    "types": "src/index.ts"
+                }
+                '''
+                
+                writeFile file: 'packages/@vben/vite-config/src/index.ts', text: '''
+                export const createViteConfig = () => ({
+                    plugins: [],
+                    resolve: {
+                        alias: {}
+                    },
+                    build: {
+                        target: "es2022"
+                    }
+                });
+                '''
+                
+                // 创建@vben-core相关包
+                writeFile file: 'packages/@core/ui-kit/tabs-ui/package.json', text: '''
+                {
+                    "name": "@vben-core/tabs-ui",
+                    "version": "1.0.0",
+                    "main": "src/index.ts"
+                }
+                '''
+                
+                writeFile file: 'packages/@core/ui-kit/tabs-ui/src/index.ts', text: '''
+                export default {};
+                '''
+                
+                writeFile file: 'packages/@core/base/icons/package.json', text: '''
+                {
+                    "name": "@vben-core/icons",
+                    "version": "1.0.0",
+                    "main": "src/index.ts"
+                }
+                '''
+                
+                writeFile file: 'packages/@core/base/icons/src/index.ts', text: '''
+                export default {};
+                '''
+                
+                writeFile file: 'packages/@core/composables/package.json', text: '''
+                {
+                    "name": "@vben-core/composables",
+                    "version": "1.0.0",
+                    "main": "src/index.ts"
+                }
+                '''
+                
+                writeFile file: 'packages/@core/composables/src/index.ts', text: '''
+                export default {};
+                '''
+                
+                // 修改tsconfig.json引用路径
+                sh '''
                     if [ -f apps/web-ele/tsconfig.json ]; then
                         sed -i 's|"extends": "@vben/tsconfig/web-app.json"|"extends": "../../packages/@vben/tsconfig/web-app.json"|g' apps/web-ele/tsconfig.json
                     fi
@@ -200,19 +213,16 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
-import { createVueSetupExtend } from 'vite-plugin-vue-setup-extend'
 import Components from 'unplugin-vue-components/vite'
 import AutoImport from 'unplugin-auto-import/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import ElementPlus from 'unplugin-element-plus/vite'
-import monacoEditorPlugin from 'vite-plugin-monaco-editor'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
-    createVueSetupExtend(),
     Components({
       resolvers: [ElementPlusResolver()],
     }),
@@ -220,7 +230,6 @@ export default defineConfig({
       resolvers: [ElementPlusResolver()],
     }),
     ElementPlus(),
-    monacoEditorPlugin({}),
   ],
   resolve: {
     alias: {
@@ -234,29 +243,23 @@ export default defineConfig({
   }
 })
 '''
-                        echo "已替换vite.config.mts文件以简化构建配置"
                     }
                 }
 
-                // 修复MenuList.vue中的重复parentId属性
-                script {
-                    def menuListPath = "apps/web-ele/src/views/features/menu/MenuList.vue"
-                    if (fileExists(menuListPath)) {
-                        sh "sed -i '/parentId: selectedParent.value,/d' ${menuListPath}"
-                        echo "已修复MenuList.vue中的重复parentId属性"
-                    }
-                }
-
-                // 修复routes.ts中的路由配置
-                script {
-                    def routesPath = "apps/web-ele/src/views/features/routes.ts"
-                    if (fileExists(routesPath)) {
-                        sh "sed -i 's|// import type { RouteRecordRaw } from|import type { RouteRecordRaw } from|g' ${routesPath}"
-                        sh "sed -i 's|// export default routes;|export default routes;|g' ${routesPath}"
-                        sh "sed -i 's|// const routes: RouteRecordRaw|const routes: RouteRecordRaw|g' ${routesPath}"
-                        echo "已修复routes.ts中的路由配置"
-                    }
-                }
+                // 修复代码文件
+                sh '''
+                    # 修复MenuList.vue中的重复parentId属性
+                    if [ -f apps/web-ele/src/views/features/menu/MenuList.vue ]; then
+                        sed -i '/parentId: selectedParent.value,/d' apps/web-ele/src/views/features/menu/MenuList.vue
+                    fi
+                    
+                    # 修复routes.ts中的路由配置
+                    if [ -f apps/web-ele/src/views/features/routes.ts ]; then
+                        sed -i 's|// import type { RouteRecordRaw } from|import type { RouteRecordRaw } from|g' apps/web-ele/src/views/features/routes.ts
+                        sed -i 's|// export default routes;|export default routes;|g' apps/web-ele/src/views/features/routes.ts
+                        sed -i 's|// const routes: RouteRecordRaw|const routes: RouteRecordRaw|g' apps/web-ele/src/views/features/routes.ts
+                    fi
+                '''
             }
         }
 
@@ -274,10 +277,10 @@ export default defineConfig({
             steps {
                 echo "构建应用..."
                 
-                // 先在根目录确保所有依赖安装完成
+                // 确保所有依赖安装完成
                 sh 'pnpm install --no-frozen-lockfile'
                 
-                // 然后进入web-ele目录构建
+                // 构建应用
                 dir('apps/web-ele') {
                     sh 'pnpm run build'
                 }
@@ -295,29 +298,105 @@ export default defineConfig({
             steps {
                 echo "构建Docker镜像..."
 
+                // 创建nginx配置目录
+                sh 'mkdir -p scripts/deploy'
+                
+                // 创建nginx配置
+                writeFile file: 'scripts/deploy/nginx.conf', text: '''
+user  nginx;
+worker_processes  auto;
+
+error_log  /var/log/nginx/error.log notice;
+pid        /var/run/nginx.pid;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    tcp_nopush      on;
+    tcp_nodelay     on;
+    
+    keepalive_timeout  65;
+
+    # gzip on;
+    # gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    
+    server {
+        listen       8080;
+        server_name  localhost;
+        
+        location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+            try_files $uri $uri/ /index.html;
+        }
+
+        location /api/ {
+            proxy_pass http://backend-api;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+        
+        # 健康检查
+        location /health {
+            access_log off;
+            return 200 "ok";
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+    }
+}
+'''
+
                 // 创建Dockerfile
                 writeFile file: 'Dockerfile', text: '''
-                FROM nginx:stable-alpine
+# 第一阶段：构建
+FROM node:18-alpine AS build
 
-                # 添加MJS支持
-                RUN echo "types { application/javascript js mjs; }" > /etc/nginx/conf.d/mjs.conf
+WORKDIR /app
 
-                # 复制构建产物
-                COPY apps/web-ele/dist /usr/share/nginx/html
+# 拷贝构建产物
+COPY apps/web-ele/dist /app/dist
 
-                # 复制nginx配置
-                COPY scripts/deploy/nginx.conf /etc/nginx/nginx.conf
+# 第二阶段：运行
+FROM nginx:stable-alpine
 
-                # 配置压缩
-                RUN if [ "$COMPRESS_MODE" = "gzip" ] || [ "$COMPRESS_MODE" = "gzip,brotli" ]; then \\
-                      sed -i 's/# gzip on;/gzip on;/g' /etc/nginx/nginx.conf; \\
-                      sed -i 's/# gzip_types/gzip_types/g' /etc/nginx/nginx.conf; \\
-                    fi
+# 添加MJS支持
+RUN echo "types { application/javascript js mjs; }" > /etc/nginx/conf.d/mjs.conf
 
-                EXPOSE 8080
+# 从构建阶段复制产物
+COPY --from=build /app/dist /usr/share/nginx/html
 
-                CMD ["nginx", "-g", "daemon off;"]
-                '''
+# 复制nginx配置
+COPY scripts/deploy/nginx.conf /etc/nginx/nginx.conf
+
+# 配置压缩
+ARG COMPRESS_MODE=gzip
+RUN if [ "$COMPRESS_MODE" = "gzip" ] || [ "$COMPRESS_MODE" = "gzip,brotli" ]; then \
+      sed -i 's/# gzip on;/gzip on;/g' /etc/nginx/nginx.conf; \
+      sed -i 's/# gzip_types/gzip_types/g' /etc/nginx/nginx.conf; \
+    fi
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 CMD wget -q -O /dev/null http://localhost:8080/health || exit 1
+
+EXPOSE 8080
+
+CMD ["nginx", "-g", "daemon off;"]
+'''
 
                 // 构建镜像
                 withCredentials([usernamePassword(credentialsId: '7bbd2f0b-5af4-4079-a15c-bc52037de966',
@@ -325,7 +404,7 @@ export default defineConfig({
                                                usernameVariable: 'DOCKER_USERNAME')]) {
                     sh """
                         echo ${DOCKER_PASSWORD} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USERNAME} --password-stdin
-                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                        docker build --build-arg COMPRESS_MODE=${params.COMPRESS_MODE} -t ${IMAGE_NAME}:${IMAGE_TAG} .
                         docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:${params.TARGET_ENV}-latest
                         docker push ${IMAGE_NAME}:${IMAGE_TAG}
                         docker push ${IMAGE_NAME}:${params.TARGET_ENV}-latest
@@ -340,7 +419,8 @@ export default defineConfig({
 
                 sshagent(['37ab906a-5428-404f-ad67-765dd2a7a8ad']) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${DEPLOY_SERVER} << 'EOF'
+                        ssh -o StrictHostKeyChecking=no ${DEPLOY_SERVER} << EOC
+                        set -e
                         mkdir -p ${DEPLOY_PATH}
 
                         # 拉取最新镜像
@@ -355,14 +435,31 @@ export default defineConfig({
                           --name ${PROJECT_NAME}-${params.TARGET_ENV} \\
                           --restart always \\
                           -p 80:8080 \\
-                          -e COMPRESS_MODE=${params.COMPRESS_MODE} \\
-                          -e ROUTER_MODE=${params.ROUTER_MODE} \\
+                          --health-cmd='wget -q -O /dev/null http://localhost:8080/health || exit 1' \\
+                          --health-interval=30s \\
+                          --health-retries=3 \\
+                          --health-timeout=10s \\
                           -v ${DEPLOY_PATH}/logs:/var/log/nginx \\
                           ${IMAGE_NAME}:${IMAGE_TAG}
 
-                        # 清理无用镜像
+                        # 清理无用镜像（保留最近5个版本）
+                        docker image ls ${IMAGE_NAME} --format '{{.Repository}}:{{.Tag}}' | grep '${params.TARGET_ENV}-[0-9]*' | sort -r | tail -n +6 | xargs -r docker rmi
+                        
+                        # 清理未被使用的镜像
                         docker image prune -f
-                        EOF
+                        
+                        # 验证应用是否正常启动
+                        echo "等待应用启动..."
+                        sleep 5
+                        
+                        # 检查健康状态
+                        HEALTH_STATUS=\$(docker inspect --format='{{.State.Health.Status}}' ${PROJECT_NAME}-${params.TARGET_ENV})
+                        if [ "\$HEALTH_STATUS" = "healthy" ] || [ "\$HEALTH_STATUS" = "starting" ]; then
+                            echo "应用已成功部署并处于健康状态"
+                        else
+                            echo "警告：应用可能未正常启动，当前状态：\$HEALTH_STATUS"
+                        fi
+                        EOC
                     """
                 }
             }
