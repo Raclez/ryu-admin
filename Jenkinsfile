@@ -128,24 +128,30 @@ pipeline {
             steps {
                 echo "构建内部依赖包..."
                 sh '''
-                    # 进入内部依赖包目录并执行unbuild
-                    cd internal/tsconfig && pnpm unbuild --stub
-                    cd ../../internal/vite-config && pnpm unbuild --stub
-                    cd ../../internal/node-utils && pnpm unbuild --stub
-                    cd ../../internal/tailwind-config && pnpm unbuild --stub
+                    # 为缺少src目录的包创建空的src目录
+                    mkdir -p internal/tsconfig/src
+                    mkdir -p internal/vite-config/src
+                    mkdir -p internal/node-utils/src
+                    mkdir -p internal/tailwind-config/src
+                    mkdir -p packages/@core/base/typings/src
+                    mkdir -p packages/@core/base/shared/src
+                    mkdir -p packages/@core/base/icons/src
                     
-                    # 构建基础核心包
-                    cd ../../packages/@core/base/typings && pnpm unbuild --stub
-                    cd ../shared && pnpm unbuild --stub
-                    cd ../icons && pnpm unbuild --stub
+                    # 复制基础配置文件
+                    mkdir -p node_modules/@vben
+                    cp -r internal/tsconfig node_modules/@vben/
+                    cp -r internal/vite-config node_modules/@vben/
+                    cp -r internal/node-utils node_modules/@vben/
+                    cp -r internal/tailwind-config node_modules/@vben/
                     
-                    # 再构建其他内部包
-                    cd ../../../../.. # 回到根目录
+                    # 直接复制 tsconfig 配置文件
+                    mkdir -p node_modules/@vben/tsconfig
+                    cp internal/tsconfig/*.json node_modules/@vben/tsconfig/
+                    
+                    # 再构建其他内部包 - 使用||true以允许部分错误继续执行
                     pnpm --filter="@vben-core/*" build || true
                     pnpm --filter=./internal build || true
                     pnpm --filter=./packages build || true
-                    
-                    # 构建effects目录下的包
                     pnpm --filter=./packages/effects build || true
                 '''
             }
@@ -186,21 +192,26 @@ COPY . /app
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
 
-# 构建基础内部依赖包
-RUN cd internal/tsconfig && pnpm unbuild --stub && \\
-    cd ../../internal/vite-config && pnpm unbuild --stub && \\
-    cd ../../internal/node-utils && pnpm unbuild --stub && \\
-    cd ../../internal/tailwind-config && pnpm unbuild --stub && \\
-    cd ../../packages/@core/base/typings && pnpm unbuild --stub && \\
-    cd ../shared && pnpm unbuild --stub && \\
-    cd ../icons && pnpm unbuild --stub
+# 为缺少src目录的包创建空的src目录并复制基础配置
+RUN mkdir -p internal/tsconfig/src \\
+    && mkdir -p internal/vite-config/src \\
+    && mkdir -p internal/node-utils/src \\
+    && mkdir -p internal/tailwind-config/src \\
+    && mkdir -p packages/@core/base/typings/src \\
+    && mkdir -p packages/@core/base/shared/src \\
+    && mkdir -p packages/@core/base/icons/src \\
+    && mkdir -p node_modules/@vben \\
+    && cp -r internal/tsconfig node_modules/@vben/ \\
+    && cp -r internal/vite-config node_modules/@vben/ \\
+    && cp -r internal/node-utils node_modules/@vben/ \\
+    && cp -r internal/tailwind-config node_modules/@vben/ \\
+    && mkdir -p node_modules/@vben/tsconfig \\
+    && cp internal/tsconfig/*.json node_modules/@vben/tsconfig/
 
-# 再构建其他内部包
+# 构建内部包
 RUN cd /app && pnpm --filter="@vben-core/*" build || true
 RUN cd /app && pnpm --filter=./internal build || true
 RUN cd /app && pnpm --filter=./packages build || true
-
-# 构建effects目录下的包
 RUN cd /app && pnpm --filter=./packages/effects build || true
 
 # 最后构建web-ele应用
