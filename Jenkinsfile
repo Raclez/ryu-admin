@@ -129,13 +129,18 @@ pipeline {
                 echo "构建内部依赖包..."
                 sh '''
                     # 先构建基础内部工具包
-                    pnpm build --filter="@vben/tsconfig" --filter="@vben/vite-config" --filter="@vben/node-utils" --filter="@vben/tailwind-config" --filter="@vben-core/*"
+                    pnpm --filter="@vben/tsconfig" build
+                    pnpm --filter="@vben/vite-config" build
+                    pnpm --filter="@vben/node-utils" build
+                    pnpm --filter="@vben/tailwind-config" build
+                    pnpm --filter="@vben-core/*" build
                     
                     # 再构建其他内部包
-                    pnpm build --filter=./internal --filter=./packages --filter="!./packages/**/*.spec.ts"
+                    pnpm --filter=./internal build
+                    pnpm --filter=./packages build
                     
                     # 构建effects目录下的包
-                    pnpm build --filter=./packages/effects
+                    pnpm --filter=./packages/effects build
                 '''
             }
         }
@@ -176,13 +181,18 @@ COPY . /app
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
 
 # 先构建基础内部工具包
-RUN pnpm build --filter="@vben/tsconfig" --filter="@vben/vite-config" --filter="@vben/node-utils" --filter="@vben/tailwind-config" --filter="@vben-core/*"
+RUN pnpm --filter="@vben/tsconfig" build
+RUN pnpm --filter="@vben/vite-config" build
+RUN pnpm --filter="@vben/node-utils" build
+RUN pnpm --filter="@vben/tailwind-config" build
+RUN pnpm --filter="@vben-core/*" build
 
 # 再构建其他内部包
-RUN pnpm build --filter=./internal --filter=./packages --filter="!./packages/**/*.spec.ts"
+RUN pnpm --filter=./internal build
+RUN pnpm --filter=./packages build
 
 # 构建effects目录下的包
-RUN pnpm build --filter=./packages/effects
+RUN pnpm --filter=./packages/effects build
 
 # 最后构建web-ele应用
 RUN cd apps/web-ele && pnpm build
