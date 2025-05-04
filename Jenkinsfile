@@ -84,7 +84,7 @@ pipeline {
         stage('依赖安装') {
             steps {
                 echo "安装项目依赖..."
-                sh 'pnpm install --frozen-lockfile'
+                sh 'pnpm install --no-frozen-lockfile'
             }
         }
 
