@@ -76,35 +76,6 @@ pipeline {
             }
         }
 
-        stage('准备构建环境') {
-            steps {
-                echo "准备构建环境..."
-                
-                // 清理node_modules以避免潜在冲突
-                sh 'rm -rf node_modules'
-                sh 'rm -rf */*/node_modules'
-                
-                // 在根目录安装所有依赖（使用--no-frozen-lockfile允许更新锁文件）
-                sh 'pnpm install --no-frozen-lockfile'
-                
-                // 创建用于构建生产版本的样式文件
-                sh '''
-                    mkdir -p apps/web-ele/src/styles
-                    echo "/* 样式文件 */" > apps/web-ele/src/styles/index.css
-                '''
-                
-                // 创建简单的工具函数
-                sh '''
-                    mkdir -p packages/utils/src
-                    echo "export function formatDate(date) { return date.toISOString().split('T')[0]; }" > packages/utils/src/index.ts
-                '''
-                
-                // 准备fallback页面以防构建失败
-                sh 'mkdir -p apps/web-ele/dist'
-                sh 'echo "<html><body><h1>Admin Dashboard</h1></body></html>" > apps/web-ele/dist/index.html'
-            }
-        }
-
         stage('修复配置文件') {
             steps {
                 echo "修复nginx配置文件..."
